@@ -1,13 +1,16 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Properly derive dirname in both ESM and CJS environments
+// When built with esbuild, import.meta.url might be unavailable in CJS output,
+// so we fall back to __dirname if it exists (which esbuild polyfills/injects).
+const currentDir = typeof __dirname !== 'undefined' 
+  ? __dirname 
+  : path.dirname(new URL(import.meta.url).pathname);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
