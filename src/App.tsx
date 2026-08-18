@@ -16,18 +16,30 @@ const SETTINGS_STORAGE_KEY = 'nebula_admin_settings_v3';
 const DEMO_USER_KEY = 'nebula_demo_user';
 
 export default function App() {
-  // Load settings from localStorage or defaults
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (stored) {
-        return { ...DEFAULT_APP_SETTINGS, ...JSON.parse(stored) };
-      }
-    } catch (e) {
-      console.warn('Failed to load stored settings:', e);
-    }
-    return DEFAULT_APP_SETTINGS;
-  });
+  // Load settings from server, fallback to localStorage
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setSettings({ ...DEFAULT_APP_SETTINGS, ...data });
+        } else {
+           // Fallback to local
+           const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+           if (stored) setSettings({ ...DEFAULT_APP_SETTINGS, ...JSON.parse(stored) });
+        }
+        setIsSettingsLoaded(true);
+      })
+      .catch(e => {
+        console.warn('Failed to fetch server settings', e);
+        const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (stored) setSettings({ ...DEFAULT_APP_SETTINGS, ...JSON.parse(stored) });
+        setIsSettingsLoaded(true);
+      });
+  }, []);
 
   const [playlist, setPlaylist] = useState<ShowItem[]>(INITIAL_SHOWS);
   const [activeId, setActiveId] = useState<string>(INITIAL_SHOWS[0]?.id || '');
@@ -67,6 +79,12 @@ export default function App() {
     setSettings(newSettings);
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+      // Persist to server
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      }).catch(e => console.warn('Failed to push settings to server', e));
     } catch (e) {
       console.warn('Failed to persist settings:', e);
     }
@@ -318,6 +336,8 @@ export default function App() {
   const activeIndex = playlist.findIndex(item => item.id === activeId);
   const prevShow = activeIndex > 0 ? playlist[activeIndex - 1] : null;
   const nextShow = activeIndex >= 0 && activeIndex < playlist.length - 1 ? playlist[activeIndex + 1] : null;
+
+  if (!isSettingsLoaded) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading configuration...</div>;
 
   return (
     <div 

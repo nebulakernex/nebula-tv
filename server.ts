@@ -1,3 +1,5 @@
+import fs from 'fs';
+import { Readable } from 'stream';
 import express from 'express';
 import path from 'path';
 import { ProxyAgent } from 'undici';
@@ -6,11 +8,40 @@ import { createServer as createViteServer } from 'vite';
 
 const currentDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(new URL(import.meta.url).href).replace(/^\/([A-Z]:)/, '$1');
 
+
+
+const SETTINGS_FILE = path.join(process.cwd(), 'app_settings.json');
+
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.get('/api/settings', (req, res) => {
+  if (fs.existsSync(SETTINGS_FILE)) {
+    try {
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      return res.json(JSON.parse(data));
+    } catch (e) {
+      console.error('Failed to read settings', e);
+    }
+  }
+  res.json(null);
+});
+
+app.post('/api/settings', (req, res) => {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2));
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Failed to save settings', e);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+
+
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -650,6 +681,53 @@ app.get('/api/loklok/home', async (req, res) => {
   } catch (e) {
     console.error('Loklok fetch failed:', e);
     res.status(500).json({ error: 'Failed to fetch Loklok API', details: e.message });
+  }
+});
+
+
+app.get('/api/stream-proxy', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl || typeof targetUrl !== 'string') {
+    return res.status(400).send('Missing url parameter');
+  }
+
+  try {
+    const headers = {};
+    if (req.headers.origin) headers['Origin'] = req.headers.origin;
+    if (req.headers.referer) headers['Referer'] = req.headers.referer;
+    
+    // Support Range requests for video seeking
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+    
+    // Basic User-Agent to bypass some blocks
+    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    const response = await fetch(targetUrl, {
+      headers: headers,
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).send('Failed to fetch stream');
+    }
+
+    res.status(response.status);
+    response.headers.forEach((val, key) => {
+      res.setHeader(key, val);
+    });
+
+    if (response.body) {
+      
+      const readableNodeStream = Readable.fromWeb(response.body);
+      readableNodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (e) {
+    console.error('Stream proxy error:', e);
+    res.status(500).send('Stream proxy error');
   }
 });
 
