@@ -339,137 +339,7 @@ app.post('/api/cloudstream/sync', async (req, res) => {
 });
 
 // Feed generator for CloudStream Providers
-app.get('/api/cloudstream/feed', (req, res) => {
-  const plugin = req.query.plugin || 'All';
-  
-  const sampleLibrary = [
-    {
-      id: "cs-loklok-queen-of-tears",
-      title: "Queen of Tears",
-      year: "2024",
-      type: "K-Drama",
-      genre: "Drama",
-      runtime: "1h 15m",
-      region: "South Korea",
-      rating: "TV-MA",
-      score: "9.3",
-      seasonNumber: 1,
-      episodeNumber: 16,
-      releaseDate: "2024-04-28",
-      isNew: true,
-      sourceLabel: "Loklok CloudStream Provider",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      sources: [
-        { quality: "1080p", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", mimeType: "video/mp4" },
-        { quality: "720p", label: "Loklok 720p HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80",
-      summary: "The queen of department stores and the prince of supermarkets weather a marital crisis until love miraculously begins to bloom again.",
-      tags: ["Romance", "K-Drama", "Loklok", "Top Rated"],
-      subtitles: [
-        { label: "English", srclang: "en", url: "https://raw.githubusercontent.com/brenopolanski/html5-video-webvtt-example/master/subtitles/subtitles-en.vtt" }
-      ],
-      epg: [
-        { title: "Episode 16: A Miracle In Berlin", start: "21:00", end: "22:15", description: "The emotional finale of Hyun-woo and Hae-in." }
-      ],
-      providerId: "cloudstream-hexated-loklok",
-      providerName: "Loklok Provider"
-    },
-    {
-      id: "cs-dramacool-twinkling-watermelon",
-      title: "Twinkling Watermelon",
-      year: "2024",
-      type: "K-Drama",
-      genre: "Drama",
-      runtime: "1h 05m",
-      region: "South Korea",
-      rating: "TV-14",
-      score: "9.2",
-      seasonNumber: 1,
-      episodeNumber: 12,
-      releaseDate: "2024-03-14",
-      isNew: false,
-      sourceLabel: "DramaCool Provider",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-      sources: [
-        { quality: "1080p", label: "DramaCool Fast 1080p", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1600&auto=format&fit=crop&q=80",
-      summary: "A CODA student with a natural gift for music time-travels back to 1995 and forms a band with his high school-aged father.",
-      tags: ["Time Travel", "Music", "Youth", "DramaCool"],
-      subtitles: [],
-      epg: [],
-      providerId: "cloudstream-hexated-dramacool",
-      providerName: "DramaCool Provider"
-    },
-    {
-      id: "cs-animepahe-solo-leveling",
-      title: "Solo Leveling: Shadow Monarch",
-      year: "2024",
-      type: "Anime Series",
-      genre: "Anime",
-      runtime: "24m",
-      region: "Japan / Korea",
-      rating: "TV-MA",
-      score: "9.6",
-      seasonNumber: 1,
-      episodeNumber: 12,
-      releaseDate: "2024-03-30",
-      isNew: true,
-      sourceLabel: "AnimePahe Provider",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-      sources: [
-        { quality: "1080p", label: "AnimePahe 1080p Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=1600&auto=format&fit=crop&q=80",
-      summary: "In a world where hunters battle deadly monsters to protect mankind, weak E-rank hunter Sung Jinwoo is chosen by a mysterious quest system.",
-      tags: ["Anime", "Action", "Fantasy", "AnimePahe"],
-      subtitles: [],
-      epg: [
-        { title: "Episode 12: Arise", start: "23:00", end: "23:24", description: "Jinwoo faces the Job Change Dungeon." }
-      ],
-      providerId: "cloudstream-hexated-animepahe",
-      providerName: "AnimePahe Provider"
-    }
-  ];
 
-  res.json({
-    provider: plugin,
-    generatedAt: new Date().toISOString(),
-    shows: sampleLibrary
-  });
-});
-
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Nebula Streams] Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
 app.get('/api/cloudstream/feed', async (req, res) => {
   const plugin = (req.query.plugin) || 'LoklokProvider';
   const tmdbKey = req.query.tmdbKey;
@@ -567,3 +437,25 @@ app.get('/api/cloudstream/feed', async (req, res) => {
     shows: shows
   });
 });
+
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Nebula Streams] Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
