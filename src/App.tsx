@@ -105,51 +105,71 @@ export default function App() {
 
 
         // Fetch active provider shows and merge with catalog
+        let allShows = [];
+        const tmdbKey = updatedSettings.api.tmdbApiKey || '';
+        
+        // 1. Fetch CloudStream / TMDB Feed
         let activePlugin = 'All';
         const enabledPlugins = updatedSettings.cloudstreamRepo.plugins.filter(p => p.enabled);
         if (enabledPlugins.length > 0) activePlugin = enabledPlugins[0].internalName;
         
-        const feedRes = await fetch(`/api/cloudstream/feed?plugin=${activePlugin}&tmdbKey=${updatedSettings.api.tmdbApiKey || ''}`);
-
-        if (feedRes.ok) {
-          const feedData = await feedRes.json();
-          if (Array.isArray(feedData.shows) && feedData.shows.length > 0) {
-            setPlaylist(prev => {
-              const updatedList = [...prev];
-              
-              feedData.shows.forEach((incomingShow: ShowItem) => {
-                // Consolidate streams: Match by title to avoid duplicate posters
-                const existingIndex = updatedList.findIndex(
-                  p => p.title.toLowerCase().trim() === incomingShow.title.toLowerCase().trim()
-                );
-                
-                if (existingIndex >= 0) {
-                  const existing = updatedList[existingIndex];
-                  
-                  // Merge sources
-                  const mergedSources = [...(existing.sources || [])];
-                  if (incomingShow.sources) {
-                    incomingShow.sources.forEach(incSrc => {
-                      if (!mergedSources.find(s => s.url === incSrc.url && s.quality === incSrc.quality)) {
-                        mergedSources.push(incSrc);
-                      }
-                    });
-                  }
-
-                  updatedList[existingIndex] = {
-                    ...existing,
-                    sources: mergedSources,
-                    // If the incoming show has updated metadata, you could merge it here
-                    episodeBadge: incomingShow.episodeBadge || existing.episodeBadge
-                  };
-                } else {
-                  updatedList.push(incomingShow);
-                }
-              });
-              
-              return updatedList;
-            });
+        try {
+          const feedRes = await fetch(`/api/cloudstream/feed?plugin=${activePlugin}&tmdbKey=${tmdbKey}`);
+          if (feedRes.ok) {
+            const feedData = await feedRes.json();
+            if (Array.isArray(feedData.shows)) {
+              allShows = [...allShows, ...feedData.shows];
+            }
           }
+        } catch (e) { console.error('CS Fetch error', e); }
+
+        // 2. Fetch Stremio Catalog Feeds (if enabled in providers)
+        for (const provider of updatedSettings.providers) {
+          if (provider.enabled && provider.type === 'stremio') {
+            try {
+               const urlObj = new URL(provider.endpoint, window.location.origin);
+               const stremioRes = await fetch(`/api/stremio/catalog${urlObj.search}`);
+               if (stremioRes.ok) {
+                 const stremioData = await stremioRes.json();
+                 if (Array.isArray(stremioData.shows)) {
+                   allShows = [...allShows, ...stremioData.shows];
+                 }
+               }
+            } catch (e) { console.error('Stremio Fetch error', e); }
+          }
+        }
+
+        if (allShows.length > 0) {
+          setPlaylist(prev => {
+            const updatedList = [...prev];
+            
+            allShows.forEach((incomingShow: ShowItem) => {
+              const existingIndex = updatedList.findIndex(
+                p => p.title.toLowerCase().trim() === incomingShow.title.toLowerCase().trim()
+              );
+              
+              if (existingIndex >= 0) {
+                const existing = updatedList[existingIndex];
+                const mergedSources = [...(existing.sources || [])];
+                if (incomingShow.sources) {
+                  incomingShow.sources.forEach(incSrc => {
+                    if (!mergedSources.find(s => s.url === incSrc.url && s.quality === incSrc.quality)) {
+                      mergedSources.push(incSrc);
+                    }
+                  });
+                }
+                updatedList[existingIndex] = {
+                  ...existing,
+                  sources: mergedSources,
+                  episodeBadge: incomingShow.episodeBadge || existing.episodeBadge
+                };
+              } else {
+                updatedList.push(incomingShow);
+              }
+            });
+            
+            return updatedList;
+          });
         }
       }
     } catch (err) {

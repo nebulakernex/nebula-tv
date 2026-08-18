@@ -229,7 +229,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     } catch {}
   };
 
-  // Automated Fast Stream Switching on Buffer/Error (Loklok style)
+  // Automated Fast Stream Switching on Buffer/Error 
   const handleAutoFastStreamSwitch = () => {
     if (playableSources.length > 1) {
       // Pick next fast source automatically
@@ -719,7 +719,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
                       <div className="absolute bottom-full right-0 mb-2 w-56 bg-[#161618] border border-white/15 rounded-xl shadow-2xl p-2.5 z-50 animate-in fade-in space-y-3">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 border-b border-white/10 pb-1 flex justify-between items-center">
                           <span>Subtitle Track</span>
-                          <span className="text-[#ff2d75]">Loklok CC</span>
+                          <span className="text-[#ff2d75]">Subtitles</span>
                         </div>
                         
                         {/* Track List */}
@@ -908,7 +908,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
                     {showSettingsMenu && (
                       <div className="absolute bottom-full right-0 mb-2 w-52 bg-[#161618] border border-white/15 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in space-y-3">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 border-b border-white/10 pb-1">
-                          Loklok Settings
+                          Settings
                         </div>
                         
                         <label className="flex items-center justify-between text-xs text-zinc-200 cursor-pointer">

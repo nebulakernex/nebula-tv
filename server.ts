@@ -352,7 +352,7 @@ app.get('/api/cloudstream/feed', async (req, res) => {
       const data = await response.json();
       
       shows = data.results.filter(r => r.poster_path).map(r => ({
-        id: `cs-${plugin}-${r.id}`,
+        id: `tmdb-${r.id}`,
         title: r.title || r.name,
         year: (r.release_date || r.first_air_date || '').split('-')[0],
         type: r.media_type === 'movie' ? 'Movie' : 'TV Series',
@@ -367,67 +367,75 @@ app.get('/api/cloudstream/feed', async (req, res) => {
         episodeBadge: r.media_type === 'movie' ? 'HD' : 'Series',
         releaseDate: r.release_date || r.first_air_date,
         isNew: true,
-        sourceLabel: `${plugin} (VidSrc)`,
+        sourceLabel: `TMDB Feed (VidSrc)`,
         sourceUrl: r.media_type === 'movie' 
-          ? `https://vidsrc.net/embed/movie?tmdb=${r.id}` 
-          : `https://vidsrc.net/embed/tv?tmdb=${r.id}`,
+          ? `https://vidsrc.to/embed/movie/${r.id}` 
+          : `https://vidsrc.to/embed/tv/${r.id}`,
         sources: [
-           { quality: "Auto", label: "Auto Server", url: r.media_type === 'movie' ? `https://vidsrc.net/embed/movie?tmdb=${r.id}` : `https://vidsrc.net/embed/tv?tmdb=${r.id}`, mimeType: "text/html" }
+           { quality: "Auto", label: "Auto Server", url: r.media_type === 'movie' ? `https://vidsrc.to/embed/movie/${r.id}` : `https://vidsrc.to/embed/tv/${r.id}`, mimeType: "text/html" }
         ],
         mimeType: "text/html",
         poster: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
         cover: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
         backdrop: `https://image.tmdb.org/t/p/w1280${r.backdrop_path}`,
         summary: r.overview,
-        tags: ["Trending", plugin],
+        tags: ["Trending", "TMDB API"],
         episodes: r.media_type === 'tv' ? [
-           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.net/embed/tv?tmdb=${r.id}&season=1&episode=1` }
+           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.to/embed/tv/${r.id}/1/1` }
         ] : [],
-        providerId: plugin,
-        providerName: `${plugin} (Hexated Repo)`
+        providerId: `tmdb-provider`,
+        providerName: `TMDB Network Feed`
       }));
     } catch (e) {
       console.error('TMDB fetch failed:', e);
     }
   }
 
-  // Fallback
+  
   if (shows.length === 0) {
-    shows = [
-      {
-        id: "cs-loklok-the-affair",
-        title: "The Affair Was Just the Beginning",
-        year: "2026",
-        type: "Crime / Drama Series",
-        genre: "Crime",
-        runtime: "52m",
-        region: "International",
-        rating: "TV-MA",
-        score: "9.0",
-        seasonNumber: 1,
-        episodeNumber: 1,
-        totalEpisodes: 8,
-        episodeBadge: "Updated to 8",
-        releaseDate: "2026-02-10",
-        isNew: true,
-        sourceLabel: "Loklok (Hexated Repo)",
-        sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        sources: [
-          { quality: "1080p FHD", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", mimeType: "video/mp4" }
-        ],
-        mimeType: "video/mp4",
-        poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80",
-        cover: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80",
-        backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&auto=format&fit=crop&q=80",
-        summary: "Please add a TMDB API Key in Admin Console to see real trending movies from your providers.",
-        tags: ["Loklok"],
-        episodes: [
-          { id: "affair-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
-        ],
-        providerId: "LoklokProvider",
-        providerName: "Loklok Provider (Hexated Repo)"
-      }
-    ];
+    try {
+      const response = await fetch('https://api.tvmaze.com/shows');
+      const data = await response.json();
+      shows = data.slice(0, 30).filter(r => r.image?.original).map(r => {
+        const imdbId = r.externals?.imdb;
+        const sourceUrl = imdbId ? `https://vidsrc.to/embed/tv/${imdbId}/1/1` : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4';
+        return {
+          id: `tvmaze-${r.id}`,
+          title: r.name,
+          year: r.premiered ? r.premiered.split('-')[0] : 'N/A',
+          type: 'TV Series',
+          genre: r.genres && r.genres.length > 0 ? r.genres[0] : 'Drama',
+          runtime: `${r.averageRuntime || 60}m`,
+          region: r.network?.country?.name || 'International',
+          rating: 'TV-MA',
+          score: r.rating?.average ? r.rating.average.toFixed(1) : '8.0',
+          seasonNumber: 1,
+          episodeNumber: 1,
+          totalEpisodes: 1,
+          episodeBadge: 'Series',
+          releaseDate: r.premiered,
+          isNew: true,
+          sourceLabel: 'TVMaze Feed (VidSrc)',
+          sourceUrl: sourceUrl,
+          sources: [
+            { quality: "Auto", label: "Auto Server", url: sourceUrl, mimeType: imdbId ? "text/html" : "video/mp4" }
+          ],
+          mimeType: imdbId ? "text/html" : "video/mp4",
+          poster: r.image.original,
+          cover: r.image.original,
+          backdrop: r.image.original,
+          summary: r.summary ? r.summary.replace(/<[^>]+>/g, '') : 'No description available.',
+          tags: ["Trending", "TVMaze API"],
+          episodes: [
+            { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: sourceUrl }
+          ],
+          providerId: 'tvmaze-provider',
+          providerName: 'TVMaze Network Feed'
+        };
+      });
+    } catch (e) {
+      console.error('TVMaze fetch failed:', e);
+    }
   }
 
   res.json({
@@ -436,6 +444,82 @@ app.get('/api/cloudstream/feed', async (req, res) => {
     plugin: plugin,
     shows: shows
   });
+});
+
+
+// Stremio Addon Catalog Feed Generator
+app.get('/api/stremio/catalog', async (req, res) => {
+  const manifestUrl = req.query.manifest || 'https://v3-cinemeta.strem.io/manifest.json';
+  const type = req.query.type || 'series';
+  const catalogId = req.query.catalog || 'top';
+  
+  try {
+    // 1. Fetch the manifest to verify it
+    const manifestRes = await fetch(manifestUrl);
+    const manifest = await manifestRes.json();
+    
+    // 2. Determine the catalog URL (Usually base_url/catalog/type/id.json)
+    const baseUrl = manifestUrl.replace('/manifest.json', '');
+    const catalogUrl = `${baseUrl}/catalog/${type}/${catalogId}.json`;
+    
+    // 3. Fetch the catalog items
+    const catalogRes = await fetch(catalogUrl);
+    const catalogData = await catalogRes.json();
+    
+    // 4. Map Stremio Meta objects to Nebula ShowItems
+    const shows = (catalogData.metas || catalogData.items || []).slice(0, 30).map(r => {
+      const imdbId = r.imdb_id || r.id; // Usually tt1234567
+      const isMovie = type === 'movie' || r.type === 'movie';
+      
+      const sourceUrl = isMovie
+        ? `https://vidsrc.to/embed/movie/${imdbId}`
+        : `https://vidsrc.to/embed/tv/${imdbId}/1/1`;
+        
+      return {
+        id: `stremio-${r.id}`,
+        title: r.name,
+        year: r.releaseInfo || (r.year ? r.year.toString() : 'N/A'),
+        type: isMovie ? 'Movie' : 'TV Series',
+        genre: r.genres && r.genres.length > 0 ? r.genres[0] : 'Trending',
+        runtime: r.runtime || '45m',
+        region: 'International',
+        rating: 'PG-13',
+        score: r.imdbRating || '8.0',
+        seasonNumber: 1,
+        episodeNumber: 1,
+        totalEpisodes: 1,
+        episodeBadge: isMovie ? 'HD' : 'Series',
+        releaseDate: r.released || r.releaseInfo || 'N/A',
+        isNew: true,
+        sourceLabel: `${manifest.name} (VidSrc)`,
+        sourceUrl: sourceUrl,
+        sources: [
+           { quality: "Auto", label: "Auto Server", url: sourceUrl, mimeType: "text/html" }
+        ],
+        mimeType: "text/html",
+        poster: r.poster || r.logo,
+        cover: r.poster || r.logo,
+        backdrop: r.background || r.poster,
+        summary: r.description || r.overview || 'No summary provided by this Stremio add-on.',
+        tags: ["Stremio", manifest.name || "Addon"],
+        episodes: !isMovie ? [
+           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.to/embed/tv/${imdbId}/1/1` }
+        ] : [],
+        providerId: `stremio-${manifest.id || 'addon'}`,
+        providerName: manifest.name || `Stremio Addon`
+      };
+    });
+    
+    res.json({
+      provider: manifest.name || 'Stremio Addon',
+      generatedAt: new Date().toISOString(),
+      shows: shows
+    });
+    
+  } catch (e) {
+    console.error('Stremio catalog fetch failed:', e);
+    res.status(500).json({ error: 'Failed to fetch or parse Stremio addon.', details: e.message });
+  }
 });
 
 async function startServer() {
