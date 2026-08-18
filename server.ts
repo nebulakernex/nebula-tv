@@ -3,7 +3,7 @@ import path from 'path';
 
 import { createServer as createViteServer } from 'vite';
 
-const currentDir = typeof currentDir !== 'undefined' ? currentDir : path.dirname(new URL(import.meta.url).pathname);
+const currentDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(new URL(import.meta.url).href).replace(/^\/([A-Z]:)/, '$1');
 
 const app = express();
 const PORT = process.env.PORT || 3000;

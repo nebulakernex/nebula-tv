@@ -213,11 +213,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-      <div className="w-full max-w-5xl bg-[#0a0a0a] border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="w-full max-w-[96vw] xl:max-w-7xl bg-[#0a0a0a] border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] animate-in fade-in">
         
         {/* Header */}
-        <div className="p-6 border-b border-white/10 bg-[#050505] flex items-center justify-between gap-4">
+        <div className="p-4 sm:p-5 border-b border-white/10 bg-[#050505] flex items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-[#7000FF] border border-white/20 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-[#7000FF]/30">
               <Settings className="w-6 h-6" />
@@ -631,10 +631,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* JSON Editor */}
               <div className="space-y-2">
                 <textarea
-                  rows={12}
+                  rows={24}
                   value={providersJson}
                   onChange={(e) => setProvidersJson(e.target.value)}
-                  className="w-full p-4 rounded-xl bg-zinc-950 border border-white/10 font-mono text-xs text-emerald-300 focus:outline-none focus:border-emerald-500"
+                  className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 font-mono text-xs text-emerald-300 focus:outline-none focus:border-emerald-500"
                   placeholder="[{ id: 'provider-1', name: 'My Provider', endpoint: '...' }]"
                 />
               </div>

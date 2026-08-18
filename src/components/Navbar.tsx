@@ -104,20 +104,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onViewChange('home')}
             className="flex items-center gap-3.5 text-left group focus:outline-none"
           >
-            <div className="w-10 h-10 bg-[#7000FF] rounded-xl border border-white/15 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-[#7000FF]/25 overflow-hidden transition-transform group-hover:scale-105">
-              {settings.logoUrl ? (
+            {settings.logoUrl ? (
+              <div className="h-8 md:h-10 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-105">
                 <img 
                   src={settings.logoUrl} 
                   alt={settings.brandName} 
-                  className="w-full h-full object-cover"
+                  className="h-full w-auto object-contain"
                   onError={(e) => {
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
-              ) : (
+              </div>
+            ) : (
+              <div className="w-10 h-10 bg-[#7000FF] rounded-xl border border-white/15 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-[#7000FF]/25 overflow-hidden transition-transform group-hover:scale-105">
                 <span>{settings.brandName?.charAt(0) || 'N'}</span>
-              )}
-            </div>
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-black text-lg text-white uppercase tracking-wider leading-none group-hover:text-[#8222FF] transition-colors font-display">
