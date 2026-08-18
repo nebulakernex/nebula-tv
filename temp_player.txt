@@ -19,7 +19,7 @@ import {
   Layers
 } from 'lucide-react';
 import Hls from 'hls.js';
-import * as dashjs from 'dashjs';
+import dashjs from 'dashjs';
 import { AppSettings, ShowItem, EpisodeItem, VideoSource, SubtitleTrack, SeasonData, SubtitleStyle } from '../types';
 
 interface SpotlightPlayerProps {
@@ -50,18 +50,6 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
   // Playback States
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
-  
-  const [playbackDiagnostic, setPlaybackDiagnostic] = useState<any>({
-    status: 'READY',
-    proxyEnabled: false,
-    playerEngine: 'Native',
-    lastError: null,
-    providerHost: '',
-    responseTime: 0,
-    httpStatus: 0
-  });
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
@@ -132,7 +120,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
           number: i + 1,
           title: `Episode ${i + 1}`,
           duration: item.runtime || '45m',
-          sourceUrl: item.sourceUrl 
+          sourceUrl: item.sourceUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
         }));
 
     return [
@@ -163,7 +151,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     if (item.sources && item.sources.length > 0) {
       return item.sources;
     }
-    const base = currentEpisode?.sourceUrl || item.sourceUrl ;
+    const base = currentEpisode?.sourceUrl || item.sourceUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
     return [
       { quality: '1080P FHD', label: '1080P Ultra', url: base, mimeType: 'video/mp4' },
       { quality: '720P HD', label: '720P Standard', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', mimeType: 'video/mp4' },
@@ -192,19 +180,6 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     return [...sameGenre, ...remaining].slice(0, 6);
   }, [playlist, item]);
 
-  
-  // Stream Pipeline Helper
-  const getPlaybackUrl = (originalUrl: string): string => {
-    if (!originalUrl) return '';
-    try {
-      const parsed = new URL(originalUrl);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return originalUrl;
-      return `/api/stream-proxy?url=${encodeURIComponent(originalUrl)}`;
-    } catch {
-      return originalUrl;
-    }
-  };
-
   // Reset active episode when main item changes
   useEffect(() => {
     setActiveSeasonIndex(0);
@@ -231,19 +206,12 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     let dash: any = null;
     let rawUrl = activeSource.url;
     
-    if (!rawUrl) {
-       setPlaybackDiagnostic(prev => ({ ...prev, status: 'STREAM_OFFLINE', lastError: 'No stream URL provided' }));
-       return;
-    }
-    
-    let streamUrl = getPlaybackUrl(rawUrl);
-    
-    setPlaybackDiagnostic(prev => ({
-      ...prev,
-      providerHost: rawUrl.startsWith('http') ? new URL(rawUrl).hostname : 'unknown',
-      proxyEnabled: streamUrl !== rawUrl
-    }));
+    // Check if it's our own proxy url or if we need to proxy it
+    let streamUrl = rawUrl.startsWith('http') 
+        ? `/api/stream-proxy?url=${encodeURIComponent(rawUrl)}`
+        : rawUrl;
 
+    // Reset video element
     videoRef.current.playbackRate = currentSpeed;
     
     const playVideo = () => {
@@ -252,20 +220,13 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
          playPromise.then(() => {
            setIsPlaying(true);
            setIsBuffering(false);
-           setPlaybackDiagnostic(prev => ({ ...prev, status: 'PLAYING' }));
-         }).catch((e) => {
+         }).catch(() => {
            setIsPlaying(false);
-           if (e.name === 'NotAllowedError') {
-             setPlaybackDiagnostic(prev => ({ ...prev, status: 'WAITING_FOR_USER_PLAY', lastError: 'Autoplay blocked by browser' }));
-           } else {
-             setPlaybackDiagnostic(prev => ({ ...prev, status: 'NETWORK_ERROR', lastError: e.message }));
-           }
          });
        }
     };
 
     if (rawUrl.includes('.m3u8')) {
-      setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'HLS.js' }));
       if (Hls.isSupported()) {
         hls = new Hls({
           xhrSetup: function (xhr, url) {
@@ -276,37 +237,38 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
         });
         hls.loadSource(streamUrl);
         hls.attachMedia(videoRef.current);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => playVideo());
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          playVideo();
+        });
         hls.on(Hls.Events.ERROR, (event: any, data: any) => {
           if (data.fatal) {
-             setPlaybackDiagnostic(prev => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'HLS Error: ' + data.type }));
-             handleAutoFastStreamSwitch();
+            handleAutoFastStreamSwitch();
           }
         });
       } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
-        setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'Native HLS' }));
         videoRef.current.src = streamUrl;
         playVideo();
       }
     } else if (rawUrl.includes('.mpd')) {
-      setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'DASH.js' }));
       dash = dashjs.MediaPlayer().create();
       dash.initialize(videoRef.current, streamUrl, true);
-      dash.on(dashjs.MediaPlayer.events.ERROR, (e: any) => {
-        setPlaybackDiagnostic(prev => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'DASH Error' }));
+      dash.on(dashjs.MediaPlayer.events.ERROR, () => {
         handleAutoFastStreamSwitch();
       });
       playVideo();
     } else {
-      setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'Native HTML5' }));
       videoRef.current.src = streamUrl;
       videoRef.current.load();
       playVideo();
     }
 
     return () => {
-      if (hls) hls.destroy();
-      if (dash) dash.reset();
+      if (hls) {
+         hls.destroy();
+      }
+      if (dash) {
+         dash.reset();
+      }
     };
   }, [activeSeasonIndex, activeEpisodeIndex, selectedQualityIndex, item.id, activeSource]);
 

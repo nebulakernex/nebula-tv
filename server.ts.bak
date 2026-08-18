@@ -1,59 +1,37 @@
-
-import express from 'express';
-import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import fs from 'fs';
 import { Readable } from 'stream';
+import express from 'express';
+import path from 'path';
+import { ProxyAgent } from 'undici';
+
+import { createServer as createViteServer } from 'vite';
 
 const currentDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(new URL(import.meta.url).href).replace(/^\/([A-Z]:)/, '$1');
 
+
+
+const SETTINGS_FILE = path.join(process.cwd(), 'app_settings.json');
+
 const app = express();
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range');
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
-
-// App Settings (Ephemeral memory + file fallback)
-const SETTINGS_FILE = path.join(process.cwd(), 'app_settings.json');
-let appSettings = {
-  version: 1,
-  playback: {
-    autoplayNext: true,
-    defaultSpeed: 1,
-    proxyExternalStreams: true
-  },
-  providers: [],
-  diagnostics: {
-    enabled: true
-  }
-};
-
-try {
-  if (fs.existsSync(SETTINGS_FILE)) {
-    const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    appSettings = { ...appSettings, ...data };
-  }
-} catch(e) {
-  console.warn("Could not load app_settings.json, using defaults.");
-}
-
 app.get('/api/settings', (req, res) => {
-  res.json(appSettings);
+  if (fs.existsSync(SETTINGS_FILE)) {
+    try {
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      return res.json(JSON.parse(data));
+    } catch (e) {
+      console.error('Failed to read settings', e);
+    }
+  }
+  res.json(null);
 });
 
 app.post('/api/settings', (req, res) => {
   try {
-    appSettings = { ...appSettings, ...req.body };
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(appSettings, null, 2));
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2));
     res.json({ success: true });
   } catch (e) {
     console.error('Failed to save settings', e);
@@ -61,183 +39,57 @@ app.post('/api/settings', (req, res) => {
   }
 });
 
-// Health check
+const PORT = process.env.PORT || 3000;
+
+
+
+// CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// API Routes
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'Nebula Streams',
-    build: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || 'unknown',
-    streamProxy: true,
-    hls: true,
-    dash: true
+    service: 'Nebula Streams API & CloudStream Sync Engine',
+    time: new Date().toISOString()
   });
 });
 
-// SSRF Protection Helper
-function isUrlAllowed(urlStr) {
-  try {
-    const parsed = new URL(urlStr);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-    const host = parsed.hostname;
-    
-    // Block local/private IPs (basic check)
-    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1') return false;
-    if (host.startsWith('192.168.') || host.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || host.startsWith('169.254.')) {
-      return false;
-    }
-    
-    // Optional: check against appSettings.providers allowlist if strict mode enabled
-    
-    return true;
-  } catch(e) {
-    return false;
+// Universal API Proxy for JSON/text feeds
+app.get('/api/proxy', async (req, res) => {
+  const target = req.query.target;
+  if (!target || !/^https?:\/\//i.test(target)) {
+    return res.status(400).json({ error: 'Valid HTTP/HTTPS target URL is required.' });
   }
-}
 
-// Stream Check API
-app.get('/api/stream-check', async (req, res) => {
-  const targetUrl = req.query.url as string;
-  if (!targetUrl || typeof targetUrl !== 'string' || !isUrlAllowed(targetUrl)) {
-    return res.status(400).json({ error: 'Invalid or blocked URL' });
-  }
-  
   try {
-    const startTime = Date.now();
-    // Do a HEAD request first
-    let response = await fetch(targetUrl, {
-      method: 'HEAD',
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(5000)
+    const upstream = await fetch(target, {
+      headers: {
+        'Accept': 'application/json,text/plain;q=0.9,*/*;q=0.8',
+        'User-Agent': 'NebulaStreamsProxy/2.0'
+      }
     });
-    
-    // Fallback to GET if HEAD fails
-    if (!response.ok) {
-       response = await fetch(targetUrl, {
-         method: 'GET',
-         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Range': 'bytes=0-0' },
-         redirect: 'follow',
-         signal: AbortSignal.timeout(5000)
-       });
-    }
 
-    const contentType = response.headers.get('content-type') || 'unknown';
-    let streamType = 'unknown';
-    if (contentType.includes('mpegurl') || targetUrl.includes('.m3u8')) streamType = 'hls';
-    else if (contentType.includes('dash+xml') || targetUrl.includes('.mpd')) streamType = 'dash';
-    else if (contentType.includes('mp4')) streamType = 'mp4';
-    
-    res.json({
-      ok: response.ok,
-      status: response.status,
-      contentType: contentType,
-      streamType: streamType,
-      rangeSupported: response.headers.get('accept-ranges') === 'bytes' || response.status === 206,
-      finalHost: new URL(response.url).hostname,
-      responseTimeMs: Date.now() - startTime
-    });
-  } catch (e) {
-    res.json({ ok: false, error: e.message });
+    const contentType = upstream.headers.get('content-type') || 'application/json; charset=utf-8';
+    const text = await upstream.text();
+    res.setHeader('Content-Type', contentType);
+    res.status(upstream.status).send(text);
+  } catch (err) {
+    res.status(502).json({ error: 'Proxy fetch failed: ' + err.message });
   }
 });
 
-// Advanced Stream Proxy
-app.get('/api/stream-proxy', async (req, res) => {
-  const targetUrl = req.query.url as string;
-  if (!targetUrl || typeof targetUrl !== 'string' || !isUrlAllowed(targetUrl)) {
-    return res.status(400).send('Invalid or blocked URL parameter');
-  }
-
-  const controller = new AbortController();
-  req.on('close', () => {
-    controller.abort();
-  });
-
-  try {
-    const headers = {};
-    if (req.headers.origin) headers['Origin'] = req.headers.origin;
-    if (req.headers.referer) headers['Referer'] = req.headers.referer;
-    if (req.headers.range) headers['Range'] = req.headers.range;
-    
-    // Inject Provider Secrets if configured
-    // TODO: look up targetUrl host in appSettings.providers to inject auth headers from env
-
-    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-    const response = await fetch(targetUrl, {
-      headers,
-      redirect: 'follow',
-      signal: controller.signal
-    });
-
-    res.status(response.status);
-    
-    // Forward important headers
-    const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control', 'etag', 'last-modified'];
-    for (const header of headersToForward) {
-      if (response.headers.has(header)) {
-        res.setHeader(header, response.headers.get(header));
-      }
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    const isM3u8 = targetUrl.includes('.m3u8') || contentType.includes('mpegurl') || contentType.includes('x-mpegURL');
-    const isMpd = targetUrl.includes('.mpd') || contentType.includes('dash+xml');
-
-    if (isM3u8) {
-      // Rewrite M3U8 Manifests
-      let text = await response.text();
-      const baseUrl = new URL(response.url);
-      
-      const rewritten = text.split('\n').map(line => {
-        if (line.trim() === '') return line;
-        
-        // Handle URIs in attributes (like #EXT-X-MEDIA:URI="...")
-        if (line.startsWith('#')) {
-           return line.replace(/URI="([^"]+)"/g, (match, uri) => {
-              try {
-                const resolved = new URL(uri, baseUrl).href;
-                return `URI="/api/stream-proxy?url=${encodeURIComponent(resolved)}"`;
-              } catch(e) { return match; }
-           });
-        }
-        
-        // Handle direct URL lines
-        try {
-          const resolved = new URL(line.trim(), baseUrl).href;
-          return `/api/stream-proxy?url=${encodeURIComponent(resolved)}`;
-        } catch (e) {
-          return line;
-        }
-      }).join('\n');
-      
-      res.send(rewritten);
-    } else if (isMpd) {
-      // Rewrite DASH Manifests if necessary
-      // A simple rewrite of BaseURL could work, or just relying on dashjs interceptor on the client
-      // For now, we will just pipe it and use the client-side dashjs interceptor for segments.
-      let text = await response.text();
-      res.send(text);
-    } else {
-      // Pipe media segments
-      if (response.body) {
-        const readableNodeStream = Readable.fromWeb(response.body as any);
-        readableNodeStream.pipe(res);
-      } else {
-        res.end();
-      }
-    }
-  } catch (e) {
-    if (e.name !== 'AbortError') {
-      console.error('Stream proxy error:', e);
-      if (!res.headersSent) res.status(500).send('Stream proxy error');
-    }
-  }
-});
-
-// Original Stremio and CloudStream routes
+// Stremio Metadata Endpoints
 app.get('/api/stremio/manifest', async (req, res) => {
-  const target = req.query.target as string;
+  const target = req.query.target;
   if (!target || !/^https?:\/\//i.test(target)) {
     return res.status(400).json({ error: 'Valid manifest URL required.' });
   }
@@ -266,9 +118,8 @@ app.get('/api/stremio/manifest', async (req, res) => {
   }
 });
 
-
 app.get('/api/stremio/catalog', async (req, res) => {
-  const manifestUrl = req.query.manifest as string;
+  const manifestUrl = req.query.manifest;
   if (!manifestUrl || !/^https?:\/\//i.test(manifestUrl)) {
     return res.status(400).json({ error: 'Valid manifest URL required.' });
   }
@@ -276,8 +127,8 @@ app.get('/api/stremio/catalog', async (req, res) => {
   try {
     const manifestRes = await fetch(manifestUrl);
     const manifest = await manifestRes.json();
-    const type = (req.query.type as string) || manifest.catalogs?.[0]?.type || 'series';
-    const catalogId = (req.query.catalog as string) || manifest.catalogs?.[0]?.id || 'top';
+    const type = req.query.type || manifest.catalogs?.[0]?.type || 'series';
+    const catalogId = req.query.catalog || manifest.catalogs?.[0]?.id || 'top';
 
     const baseUrl = manifestUrl.replace(/\/manifest\.json$/i, '');
     const catalogUrl = `${baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`;
@@ -321,9 +172,8 @@ app.get('/api/stremio/catalog', async (req, res) => {
 });
 
 // Hexated CloudStream Repository Parsing & Syncing Endpoints
-
 app.get('/api/cloudstream/repo', async (req, res) => {
-  const rawUrl = (req.query.url as string) || 'https://github.com/hexated/cloudstream-extensions-hexated/tree/master';
+  const rawUrl = req.query.url || 'https://github.com/hexated/cloudstream-extensions-hexated/tree/master';
   
   let directRepoJsonUrl = 'https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds/repo.json';
   let fallbackRepoJsonUrl = 'https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/master/repo.json';
@@ -522,10 +372,9 @@ app.post('/api/cloudstream/sync', async (req, res) => {
 
 // Feed generator for CloudStream Providers
 
-
 app.get('/api/cloudstream/feed', async (req, res) => {
-  const plugin = (req.query.plugin as string) || 'LoklokProvider';
-  const tmdbKey = req.query.tmdbKey as string;
+  const plugin = (req.query.plugin) || 'LoklokProvider';
+  const tmdbKey = req.query.tmdbKey;
 
   let shows = [];
 
@@ -631,10 +480,258 @@ app.get('/api/cloudstream/feed', async (req, res) => {
 
 
 // Stremio Addon Catalog Feed Generator
+app.get('/api/stremio/catalog', async (req, res) => {
+  const manifestUrl = req.query.manifest || 'https://v3-cinemeta.strem.io/manifest.json';
+  const type = req.query.type || 'series';
+  const catalogId = req.query.catalog || 'top';
+  
+  try {
+    // 1. Fetch the manifest to verify it
+    const manifestRes = await fetch(manifestUrl);
+    const manifest = await manifestRes.json();
+    
+    // 2. Determine the catalog URL (Usually base_url/catalog/type/id.json)
+    const baseUrl = manifestUrl.replace('/manifest.json', '');
+    const catalogUrl = `${baseUrl}/catalog/${type}/${catalogId}.json`;
+    
+    // 3. Fetch the catalog items
+    const catalogRes = await fetch(catalogUrl);
+    const catalogData = await catalogRes.json();
+    
+    // 4. Map Stremio Meta objects to Nebula ShowItems
+    const shows = (catalogData.metas || catalogData.items || []).slice(0, 30).map(r => {
+      const imdbId = r.imdb_id || r.id; // Usually tt1234567
+      const isMovie = type === 'movie' || r.type === 'movie';
+      
+      const sourceUrl = isMovie
+        ? `https://vidsrc.cc/embed/movie/${imdbId}`
+        : `https://vidsrc.cc/embed/tv/${imdbId}/1/1`;
+        
+      return {
+        id: `stremio-${r.id}`,
+        title: r.name,
+        year: r.releaseInfo || (r.year ? r.year.toString() : 'N/A'),
+        type: isMovie ? 'Movie' : 'TV Series',
+        genre: r.genres && r.genres.length > 0 ? r.genres[0] : 'Trending',
+        runtime: r.runtime || '45m',
+        region: 'International',
+        rating: 'PG-13',
+        score: r.imdbRating || '8.0',
+        seasonNumber: 1,
+        episodeNumber: 1,
+        totalEpisodes: 1,
+        episodeBadge: isMovie ? 'HD' : 'Series',
+        releaseDate: r.released || r.releaseInfo || 'N/A',
+        isNew: true,
+        sourceLabel: `${manifest.name} (VidSrc)`,
+        sourceUrl: sourceUrl,
+        sources: [
+           { quality: "Auto", label: "Auto Server", url: sourceUrl, mimeType: "text/html" }
+        ],
+        mimeType: "text/html",
+        poster: r.poster || r.logo,
+        cover: r.poster || r.logo,
+        backdrop: r.background || r.poster,
+        summary: r.description || r.overview || 'No summary provided by this Stremio add-on.',
+        tags: ["Stremio", manifest.name || "Addon"],
+        episodes: !isMovie ? [
+           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.cc/embed/tv/${imdbId}/1/1` }
+        ] : [],
+        providerId: `stremio-${manifest.id || 'addon'}`,
+        providerName: manifest.name || `Stremio Addon`
+      };
+    });
+    
+    res.json({
+      provider: manifest.name || 'Stremio Addon',
+      generatedAt: new Date().toISOString(),
+      shows: shows
+    });
+    
+  } catch (e) {
+    console.error('Stremio catalog fetch failed:', e);
+    res.status(500).json({ error: 'Failed to fetch or parse Stremio addon.', details: e.message });
+  }
+});
 
+
+// Loklok Home API Feed Generator
+app.get('/api/loklok/home', async (req, res) => {
+  const page = req.query.page || 0;
+  try {
+    const proxyUrl = process.env.RESIDENTIAL_PROXY_URL;
+    let proxiesToTry = [];
+    
+    if (proxyUrl) {
+      proxiesToTry.push(proxyUrl);
+      console.log('Routing Loklok request through custom proxy...');
+    } else {
+      console.log('No custom proxy found. Fetching free proxy list from iplocate...');
+      try {
+        const listRes = await fetch('https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/http.txt');
+        const listText = await listRes.text();
+        const allProxies = listText.split('\n').filter(p => p.trim());
+        // Pick 5 random proxies to try
+        for(let i = 0; i < 8; i++) {
+          proxiesToTry.push(`http://${allProxies[Math.floor(Math.random() * allProxies.length)].trim()}`);
+        }
+      } catch (e) {
+        console.error('Failed to fetch free proxy list:', e);
+      }
+    }
+
+    let loklokText = null;
+    let successfulProxy = null;
+
+    // Fallback if proxy fetching completely fails, try direct once
+    if (proxiesToTry.length === 0) proxiesToTry.push('direct');
+
+    for (const pUrl of proxiesToTry) {
+      const fetchOptions: any = {
+        headers: {
+          'lang': 'en',
+          'versioncode': '11',
+          'clienttype': 'ios_jike_default'
+        }
+      };
+
+      if (pUrl !== 'direct') {
+        fetchOptions.dispatcher = new ProxyAgent(pUrl);
+      }
+      
+      try {
+        // AbortController to prevent hanging on bad free proxies
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+        fetchOptions.signal = controller.signal;
+
+        const loklokRes = await fetch(`https://ga-mobile-api.loklok.tv/cms/app/homePage/getHome?page=${page}`, fetchOptions as any);
+        clearTimeout(timeout);
+        
+        const text = await loklokRes.text();
+        if (!text.includes('Access Denied') && text.includes('recommendItems')) {
+           loklokText = text;
+           successfulProxy = pUrl;
+           break; // Success!
+        }
+      } catch (e) {
+        // Silently ignore individual proxy timeout failures and try the next one
+      }
+    }
+
+    if (!loklokText) {
+      console.warn('Loklok API blocked by Akamai on all tried proxies.');
+      return res.status(403).json({ error: 'Blocked by Loklok Akamai firewall. All free proxies failed.' });
+    }
+    
+    if (successfulProxy && successfulProxy !== 'direct') {
+       console.log(`Successfully bypassed Akamai using proxy: ${successfulProxy}`);
+    }
+
+    const data = JSON.parse(loklokText);
+    const sections = (data.data && data.data.recommendItems) ? data.data.recommendItems : [];
+    
+    // Flatten all sections into one big list of shows
+    let shows = [];
+    sections.filter(s => s.homeSectionType !== 'BLOCK_GROUP').forEach(section => {
+      if (section.recommendContentVOList) {
+        section.recommendContentVOList.forEach(item => {
+          shows.push({
+            id: `loklok-${item.id}`,
+            title: item.title || item.name || 'Unknown',
+            year: item.releaseTime || new Date().getFullYear().toString(),
+            type: item.category == 1 ? 'Movie' : 'TV Series',
+            genre: section.homeSectionName || 'Trending',
+            runtime: '45m',
+            region: 'Asia',
+            rating: 'TV-14',
+            score: item.score || '8.5',
+            seasonNumber: 1,
+            episodeNumber: item.updateEpisode || 1,
+            totalEpisodes: item.episodeCount || 1,
+            episodeBadge: item.category == 1 ? 'HD' : `Ep ${item.updateEpisode || 1}`,
+            releaseDate: item.releaseTime || '2024-01-01',
+            isNew: true,
+            sourceLabel: 'Loklok Network (VidSrc)',
+            sourceUrl: `https://vidsrc.cc/embed/${item.category == 1 ? 'movie' : 'tv'}/${item.id}`,
+            sources: [
+              { quality: 'Auto', label: 'Loklok Server', url: `https://vidsrc.cc/embed/${item.category == 1 ? 'movie' : 'tv'}/${item.id}`, mimeType: 'text/html' }
+            ],
+            mimeType: 'text/html',
+            poster: item.imageUrl || item.cover,
+            cover: item.imageUrl || item.cover,
+            backdrop: item.imageUrl || item.cover,
+            summary: item.introduction || 'No summary available.',
+            tags: ['Loklok', 'Trending'],
+            episodes: item.category == 1 ? [] : [
+              { id: `ep-${item.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.cc/embed/tv/${item.id}/1/1` }
+            ],
+            providerId: 'loklok-official',
+            providerName: 'Loklok App Feed'
+          });
+        });
+      }
+    });
+
+    res.json({
+      provider: 'Loklok App Feed',
+      generatedAt: new Date().toISOString(),
+      shows: shows
+    });
+  } catch (e) {
+    console.error('Loklok fetch failed:', e);
+    res.status(500).json({ error: 'Failed to fetch Loklok API', details: e.message });
+  }
+});
+
+
+app.get('/api/stream-proxy', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl || typeof targetUrl !== 'string') {
+    return res.status(400).send('Missing url parameter');
+  }
+
+  try {
+    const headers = {};
+    if (req.headers.origin) headers['Origin'] = req.headers.origin;
+    if (req.headers.referer) headers['Referer'] = req.headers.referer;
+    
+    // Support Range requests for video seeking
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+    
+    // Basic User-Agent to bypass some blocks
+    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    const response = await fetch(targetUrl, {
+      headers: headers,
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).send('Failed to fetch stream');
+    }
+
+    res.status(response.status);
+    response.headers.forEach((val, key) => {
+      res.setHeader(key, val);
+    });
+
+    if (response.body) {
+      
+      const readableNodeStream = Readable.fromWeb(response.body);
+      readableNodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (e) {
+    console.error('Stream proxy error:', e);
+    res.status(500).send('Stream proxy error');
+  }
+});
 
 async function startServer() {
-  const PORT = parseInt(process.env.PORT || "3000", 10);
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

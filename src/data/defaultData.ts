@@ -200,9 +200,9 @@ export const INITIAL_SHOWS: ShowItem[] = [
     episodeBadge: "Season 2 • Ep 1",
     releaseDate: "2026-03-01",
     isNew: true,
-    sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    sourceUrl: "",
     sources: [
-      { quality: "1080P FHD", label: "Loklok 1080P Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", mimeType: "video/mp4" },
+      { quality: "1080P FHD", label: "Loklok 1080P Ultra", url: "", mimeType: "video/mp4" },
       { quality: "720P HD", label: "Loklok 720P HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", mimeType: "video/mp4" },
       { quality: "480P SD", label: "Loklok 480P Fast", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", mimeType: "video/mp4" }
     ],
@@ -238,7 +238,7 @@ export const INITIAL_SHOWS: ShowItem[] = [
           title: `Season 1 • Episode ${i + 1}`,
           duration: "1h 05m",
           sourceUrl: i % 2 === 0 
-            ? "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" 
+            ? "" 
             : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
         }))
       },
@@ -262,7 +262,7 @@ export const INITIAL_SHOWS: ShowItem[] = [
       number: i + 1,
       title: `Episode ${i + 1}`,
       duration: "1h 08m",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+      sourceUrl: ""
     })),
     epg: []
   },
@@ -282,9 +282,9 @@ export const INITIAL_SHOWS: ShowItem[] = [
     episodeBadge: "Updated to 8",
     releaseDate: "2026-02-10",
     isNew: true,
-    sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    sourceUrl: "",
     sources: [
-      { quality: "1080P FHD", label: "1080P Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", mimeType: "video/mp4" },
+      { quality: "1080P FHD", label: "1080P Ultra", url: "", mimeType: "video/mp4" },
       { quality: "720P HD", label: "720P HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", mimeType: "video/mp4" },
       { quality: "480P SD", label: "480P Fast", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", mimeType: "video/mp4" }
     ],
@@ -313,7 +313,7 @@ export const INITIAL_SHOWS: ShowItem[] = [
         seasonTitle: "Season 1",
         totalEpisodes: 8,
         episodes: [
-          { id: "affair-s1-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
+          { id: "affair-s1-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "" },
           { id: "affair-s1-ep2", number: 2, title: "Whispers in the Lobby", duration: "49m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" },
           { id: "affair-s1-ep3", number: 3, title: "Secret In Berlin", duration: "51m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" },
           { id: "affair-s1-ep4", number: 4, title: "The Unsent Message", duration: "54m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" },
@@ -335,7 +335,7 @@ export const INITIAL_SHOWS: ShowItem[] = [
       }
     ],
     episodes: [
-      { id: "affair-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
+      { id: "affair-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "" },
       { id: "affair-ep2", number: 2, title: "Whispers in the Lobby", duration: "49m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" },
       { id: "affair-ep3", number: 3, title: "Secret In Berlin", duration: "51m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" },
       { id: "affair-ep4", number: 4, title: "The Unsent Message", duration: "54m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" },
@@ -477,7 +477,7 @@ export const INITIAL_SHOWS: ShowItem[] = [
           number: i + 1,
           title: `Book 7 • Ep ${i + 1}`,
           duration: "29m",
-          sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+          sourceUrl: ""
         }))
       }
     ],
@@ -548,7 +548,7 @@ export const INITIAL_SHOWS: ShowItem[] = [
           number: i + 1,
           title: `Season 2 • Ep ${i + 1}`,
           duration: "24m",
-          sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+          sourceUrl: ""
         }))
       }
     ],
@@ -576,9 +576,9 @@ export const INITIAL_SHOWS: ShowItem[] = [
     releaseDate: "2026-11-15",
     isUpcoming: true,
     upcomingDate: "Nov 15, 2026",
-    sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    sourceUrl: "",
     sources: [
-      { quality: "1080P FHD", label: "Trailer 1080P", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", mimeType: "video/mp4" }
+      { quality: "1080P FHD", label: "Trailer 1080P", url: "", mimeType: "video/mp4" }
     ],
     mimeType: "video/mp4",
     poster: "https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=600&auto=format&fit=crop&q=80",
