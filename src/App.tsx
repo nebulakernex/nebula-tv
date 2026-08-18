@@ -73,16 +73,17 @@ export default function App() {
   }, []);
 
   // Synchronize CloudStream Repository function
-  const handleSyncRepository = useCallback(async () => {
+  const handleSyncRepository = useCallback(async (overrideSettings?: AppSettings) => {
+    const activeSettings = overrideSettings || settings;
     setIsSyncing(true);
     try {
-      const response = await fetch(`/api/cloudstream/repo?url=${encodeURIComponent(settings.cloudstreamRepo.url)}`);
+      const response = await fetch(`/api/cloudstream/repo?url=${encodeURIComponent(activeSettings.cloudstreamRepo.url)}`);
       if (response.ok) {
         const data = await response.json();
         
         // Merge plugin states
         const incomingPlugins: CloudstreamPlugin[] = data.plugins || [];
-        const existingMap = new Map(settings.cloudstreamRepo.plugins.map(p => [p.internalName, p.enabled]));
+        const existingMap = new Map(activeSettings.cloudstreamRepo.plugins.map(p => [p.internalName, p.enabled]));
 
         const mergedPlugins = incomingPlugins.map(p => ({
           ...p,
@@ -90,11 +91,11 @@ export default function App() {
         }));
 
         const updatedSettings: AppSettings = {
-          ...settings,
+          ...activeSettings,
           cloudstreamRepo: {
-            ...settings.cloudstreamRepo,
-            name: data.name || settings.cloudstreamRepo.name,
-            description: data.description || settings.cloudstreamRepo.description,
+            ...activeSettings.cloudstreamRepo,
+            name: data.name || activeSettings.cloudstreamRepo.name,
+            description: data.description || activeSettings.cloudstreamRepo.description,
             lastSyncedAt: new Date().toISOString(),
             status: 'synced',
             plugins: mergedPlugins
@@ -108,36 +109,49 @@ export default function App() {
         let allShows = [];
         const tmdbKey = updatedSettings.api.tmdbApiKey || '';
         
-        // 1. Fetch CloudStream / TMDB Feed
+        // 1. Setup Fetch Promises
         let activePlugin = 'All';
         const enabledPlugins = updatedSettings.cloudstreamRepo.plugins.filter(p => p.enabled);
         if (enabledPlugins.length > 0) activePlugin = enabledPlugins[0].internalName;
         
-        try {
-          const feedRes = await fetch(`/api/cloudstream/feed?plugin=${activePlugin}&tmdbKey=${tmdbKey}`);
-          if (feedRes.ok) {
-            const feedData = await feedRes.json();
-            if (Array.isArray(feedData.shows)) {
-              allShows = [...allShows, ...feedData.shows];
-            }
-          }
-        } catch (e) { console.error('CS Fetch error', e); }
+        const fetchPromises = [];
+        
+        // Cloudstream Feed Promise
+        fetchPromises.push(
+          fetch(`/api/cloudstream/feed?plugin=${activePlugin}&tmdbKey=${tmdbKey}`)
+            .then(res => res.json())
+            .then(data => data.shows || [])
+            .catch(e => { console.error('CS Fetch error', e); return []; })
+        );
 
-        // 2. Fetch Stremio Catalog Feeds (if enabled in providers)
+        // Loklok API Promise
+        fetchPromises.push(
+          fetch('/api/loklok/home')
+            .then(res => res.json())
+            .then(data => data.shows || [])
+            .catch(e => { console.error('Loklok Fetch error', e); return []; })
+        );
+
+        // Stremio Catalog Promises
         for (const provider of updatedSettings.providers) {
           if (provider.enabled && provider.type === 'stremio') {
-            try {
-               const urlObj = new URL(provider.endpoint, window.location.origin);
-               const stremioRes = await fetch(`/api/stremio/catalog${urlObj.search}`);
-               if (stremioRes.ok) {
-                 const stremioData = await stremioRes.json();
-                 if (Array.isArray(stremioData.shows)) {
-                   allShows = [...allShows, ...stremioData.shows];
-                 }
-               }
-            } catch (e) { console.error('Stremio Fetch error', e); }
+             const urlObj = new URL(provider.endpoint, window.location.origin);
+             fetchPromises.push(
+               fetch(`/api/stremio/catalog${urlObj.search}`)
+                 .then(res => res.json())
+                 .then(data => data.shows || [])
+                 .catch(e => { console.error('Stremio Fetch error', e); return []; })
+             );
           }
         }
+
+        // 2. Execute all concurrently
+        const results = await Promise.all(fetchPromises);
+        results.forEach(shows => {
+           if (Array.isArray(shows)) {
+             allShows = [...allShows, ...shows];
+           }
+        });
 
         if (allShows.length > 0) {
           setPlaylist(prev => {
@@ -177,7 +191,7 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  }, [settings, saveSettings]);
+  }, [activeSettings, saveSettings]);
 
   // Initial Sync on Boot
   useEffect(() => {
@@ -209,6 +223,7 @@ export default function App() {
       }
     };
     saveSettings(updated);
+    handleSyncRepository(updated);
   };
 
   // Toggle individual plugin
@@ -224,6 +239,7 @@ export default function App() {
       }
     };
     saveSettings(updated);
+    handleSyncRepository(updated);
   };
 
   // Switch Theme Preset
@@ -440,6 +456,7 @@ export default function App() {
         onSaveSettings={(newSet) => {
           saveSettings(newSet);
           setIsAdminModalOpen(false);
+          handleSyncRepository(newSet);
         }}
         onResetSettings={() => {
           saveSettings(DEFAULT_APP_SETTINGS);

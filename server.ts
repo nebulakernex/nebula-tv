@@ -370,10 +370,10 @@ app.get('/api/cloudstream/feed', async (req, res) => {
         isNew: true,
         sourceLabel: `TMDB Feed (VidSrc)`,
         sourceUrl: r.media_type === 'movie' 
-          ? `https://vidsrc.to/embed/movie/${r.id}` 
-          : `https://vidsrc.to/embed/tv/${r.id}`,
+          ? `https://vidsrc.cc/embed/movie/${r.id}` 
+          : `https://vidsrc.cc/embed/tv/${r.id}`,
         sources: [
-           { quality: "Auto", label: "Auto Server", url: r.media_type === 'movie' ? `https://vidsrc.to/embed/movie/${r.id}` : `https://vidsrc.to/embed/tv/${r.id}`, mimeType: "text/html" }
+           { quality: "Auto", label: "Auto Server", url: r.media_type === 'movie' ? `https://vidsrc.cc/embed/movie/${r.id}` : `https://vidsrc.cc/embed/tv/${r.id}`, mimeType: "text/html" }
         ],
         mimeType: "text/html",
         poster: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
@@ -382,7 +382,7 @@ app.get('/api/cloudstream/feed', async (req, res) => {
         summary: r.overview,
         tags: ["Trending", "TMDB API"],
         episodes: r.media_type === 'tv' ? [
-           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.to/embed/tv/${r.id}/1/1` }
+           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.cc/embed/tv/${r.id}/1/1` }
         ] : [],
         providerId: `tmdb-provider`,
         providerName: `TMDB Network Feed`
@@ -399,7 +399,7 @@ app.get('/api/cloudstream/feed', async (req, res) => {
       const data = await response.json();
       shows = data.slice(0, 30).filter(r => r.image?.original).map(r => {
         const imdbId = r.externals?.imdb;
-        const sourceUrl = imdbId ? `https://vidsrc.to/embed/tv/${imdbId}/1/1` : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4';
+        const sourceUrl = imdbId ? `https://vidsrc.cc/embed/tv/${imdbId}/1/1` : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4';
         return {
           id: `tvmaze-${r.id}`,
           title: r.name,
@@ -473,8 +473,8 @@ app.get('/api/stremio/catalog', async (req, res) => {
       const isMovie = type === 'movie' || r.type === 'movie';
       
       const sourceUrl = isMovie
-        ? `https://vidsrc.to/embed/movie/${imdbId}`
-        : `https://vidsrc.to/embed/tv/${imdbId}/1/1`;
+        ? `https://vidsrc.cc/embed/movie/${imdbId}`
+        : `https://vidsrc.cc/embed/tv/${imdbId}/1/1`;
         
       return {
         id: `stremio-${r.id}`,
@@ -504,7 +504,7 @@ app.get('/api/stremio/catalog', async (req, res) => {
         summary: r.description || r.overview || 'No summary provided by this Stremio add-on.',
         tags: ["Stremio", manifest.name || "Addon"],
         episodes: !isMovie ? [
-           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.to/embed/tv/${imdbId}/1/1` }
+           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.cc/embed/tv/${imdbId}/1/1` }
         ] : [],
         providerId: `stremio-${manifest.id || 'addon'}`,
         providerName: manifest.name || `Stremio Addon`
@@ -622,9 +622,9 @@ app.get('/api/loklok/home', async (req, res) => {
             releaseDate: item.releaseTime || '2024-01-01',
             isNew: true,
             sourceLabel: 'Loklok Network (VidSrc)',
-            sourceUrl: `https://vidsrc.to/embed/${item.category == 1 ? 'movie' : 'tv'}/${item.id}`,
+            sourceUrl: `https://vidsrc.cc/embed/${item.category == 1 ? 'movie' : 'tv'}/${item.id}`,
             sources: [
-              { quality: 'Auto', label: 'Loklok Server', url: `https://vidsrc.to/embed/${item.category == 1 ? 'movie' : 'tv'}/${item.id}`, mimeType: 'text/html' }
+              { quality: 'Auto', label: 'Loklok Server', url: `https://vidsrc.cc/embed/${item.category == 1 ? 'movie' : 'tv'}/${item.id}`, mimeType: 'text/html' }
             ],
             mimeType: 'text/html',
             poster: item.imageUrl || item.cover,
@@ -633,7 +633,7 @@ app.get('/api/loklok/home', async (req, res) => {
             summary: item.introduction || 'No summary available.',
             tags: ['Loklok', 'Trending'],
             episodes: item.category == 1 ? [] : [
-              { id: `ep-${item.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.to/embed/tv/${item.id}/1/1` }
+              { id: `ep-${item.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.cc/embed/tv/${item.id}/1/1` }
             ],
             providerId: 'loklok-official',
             providerName: 'Loklok App Feed'
