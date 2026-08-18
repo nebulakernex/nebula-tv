@@ -573,7 +573,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* Providers & CloudStream Feeds Tab */}
           {activeTab === 'providers' && (
             <div className="space-y-6">
+              
+              {/* TMDB Integration */}
+              <div className="p-4 rounded-xl bg-zinc-950 border border-[#7000FF]/30 space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white">TMDB Integration (Recommended)</h3>
+                  <p className="text-xs text-zinc-400">
+                    Enter your TMDB API Key to switch from the mockup JSON data to real trending movies and TV shows from The Movie Database.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">TMDB API KEY (v3)</label>
+                  <input
+                    type="password"
+                    value={formData.api.tmdbApiKey || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, api: { ...prev.api, tmdbApiKey: e.target.value } }))}
+                    className="w-full px-3 py-2 bg-black border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-[#7000FF]"
+                    placeholder="Enter TMDB API Key..."
+                  />
+                </div>
+              </div>
+
               {/* Action Bar */}
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-white">Multi-Provider JSON Configuration</h3>

@@ -199,6 +199,7 @@ export interface AppSettings {
     refreshMinutes: number;
     headersJson: string;
     mappings: FieldMappings;
+    tmdbApiKey?: string;
   };
   providers: ProviderConfig[];
   cloudstreamRepo: CloudstreamRepoState;

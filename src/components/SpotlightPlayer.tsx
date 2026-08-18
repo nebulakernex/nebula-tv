@@ -448,7 +448,17 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             onMouseLeave={() => isPlaying && setShowControls(false)}
             className="relative rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl aspect-video select-none group flex items-center justify-center"
           >
-            {/* Native HTML5 Video Element */}
+            {/* Native HTML5 Video or Embed */}
+            {activeSource.mimeType === 'text/html' || activeSource.url.includes('vidsrc') ? (
+              <iframe
+                key={`${item.id}-${activeSeasonIndex}-${activeEpisodeIndex}-${selectedQualityIndex}`}
+                src={activeSource.url}
+                className="w-full h-full border-0 absolute inset-0"
+                allowFullScreen
+                allow="autoplay; fullscreen"
+                referrerPolicy="origin"
+              />
+            ) : (
             <video
               ref={videoRef}
               key={`${item.id}-${activeSeasonIndex}-${activeEpisodeIndex}-${selectedQualityIndex}`}
@@ -504,6 +514,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
                 />
               ))}
             </video>
+            )}
 
             {/* Custom Live Subtitle Overlay (Controlled by user font size, color, background) */}
             {activeSubtitleTrack >= 0 && currentSubtitleText && (
@@ -525,7 +536,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* Centered Big Play button when paused */}
-            {!isPlaying && !isBuffering && (
+            {!(activeSource.mimeType === 'text/html' || activeSource.url.includes('vidsrc')) && !isPlaying && !isBuffering && (
               <div 
                 onClick={togglePlay}
                 className="absolute inset-0 bg-black/40 hover:bg-black/25 flex items-center justify-center cursor-pointer transition-colors z-10"
@@ -629,6 +640,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* ================= FLOATING LOKLOK OVERLAY CONTROLS ================= */}
+            {!(activeSource.mimeType === 'text/html' || activeSource.url.includes('vidsrc')) && (
             <div 
               className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-3 sm:p-4 pt-12 space-y-2.5 transition-opacity duration-300 z-30 ${
                 showControls || !isPlaying ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -960,6 +972,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
 

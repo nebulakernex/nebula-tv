@@ -1,13 +1,9 @@
 import express from 'express';
 import path from 'path';
+
 import { createServer as createViteServer } from 'vite';
 
-// Properly derive dirname in both ESM and CJS environments
-// When built with esbuild, import.meta.url might be unavailable in CJS output,
-// so we fall back to __dirname if it exists (which esbuild polyfills/injects).
-const currentDir = typeof __dirname !== 'undefined' 
-  ? __dirname 
-  : path.dirname(new URL(import.meta.url).pathname);
+const currentDir = typeof currentDir !== 'undefined' ? currentDir : path.dirname(new URL(import.meta.url).pathname);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,7 +33,7 @@ app.get('/api/health', (req, res) => {
 
 // Universal API Proxy for JSON/text feeds
 app.get('/api/proxy', async (req, res) => {
-  const target = req.query.target as string;
+  const target = req.query.target;
   if (!target || !/^https?:\/\//i.test(target)) {
     return res.status(400).json({ error: 'Valid HTTP/HTTPS target URL is required.' });
   }
@@ -54,14 +50,14 @@ app.get('/api/proxy', async (req, res) => {
     const text = await upstream.text();
     res.setHeader('Content-Type', contentType);
     res.status(upstream.status).send(text);
-  } catch (err: any) {
+  } catch (err) {
     res.status(502).json({ error: 'Proxy fetch failed: ' + err.message });
   }
 });
 
 // Stremio Metadata Endpoints
 app.get('/api/stremio/manifest', async (req, res) => {
-  const target = req.query.target as string;
+  const target = req.query.target;
   if (!target || !/^https?:\/\//i.test(target)) {
     return res.status(400).json({ error: 'Valid manifest URL required.' });
   }
@@ -78,20 +74,20 @@ app.get('/api/stremio/manifest', async (req, res) => {
         version: manifest.version || '1.0.0',
         description: manifest.description || '',
         types: manifest.types || [],
-        catalogs: (manifest.catalogs || []).map((c: any) => ({
+        catalogs: (manifest.catalogs || []).map((c) => ({
           id: c.id,
           type: c.type,
           name: c.name || c.id
         }))
       }
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get('/api/stremio/catalog', async (req, res) => {
-  const manifestUrl = req.query.manifest as string;
+  const manifestUrl = req.query.manifest;
   if (!manifestUrl || !/^https?:\/\//i.test(manifestUrl)) {
     return res.status(400).json({ error: 'Valid manifest URL required.' });
   }
@@ -99,8 +95,8 @@ app.get('/api/stremio/catalog', async (req, res) => {
   try {
     const manifestRes = await fetch(manifestUrl);
     const manifest = await manifestRes.json();
-    const type = (req.query.type as string) || (manifest.catalogs?.[0]?.type) || 'series';
-    const catalogId = (req.query.catalog as string) || (manifest.catalogs?.[0]?.id) || 'top';
+    const type = req.query.type || manifest.catalogs?.[0]?.type || 'series';
+    const catalogId = req.query.catalog || manifest.catalogs?.[0]?.id || 'top';
 
     const baseUrl = manifestUrl.replace(/\/manifest\.json$/i, '');
     const catalogUrl = `${baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`;
@@ -109,7 +105,7 @@ app.get('/api/stremio/catalog', async (req, res) => {
     const catData = await catRes.json();
     const metas = Array.isArray(catData.metas) ? catData.metas : [];
 
-    const shows = metas.map((meta: any, idx: number) => ({
+    const shows = metas.map((meta, idx) => ({
       id: `stremio-${manifest.id || 'addon'}-${meta.id || idx}`,
       title: meta.name || meta.title || `Catalog Item ${idx + 1}`,
       year: meta.releaseInfo || meta.year || '2024',
@@ -138,16 +134,15 @@ app.get('/api/stremio/catalog', async (req, res) => {
       name: `${manifest.name || 'Stremio'} Shows`,
       shows
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // Hexated CloudStream Repository Parsing & Syncing Endpoints
 app.get('/api/cloudstream/repo', async (req, res) => {
-  const rawUrl = (req.query.url as string) || 'https://github.com/hexated/cloudstream-extensions-hexated/tree/master';
+  const rawUrl = req.query.url || 'https://github.com/hexated/cloudstream-extensions-hexated/tree/master';
   
-  // Normalize GitHub repository URLs to raw/api targets
   let directRepoJsonUrl = 'https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds/repo.json';
   let fallbackRepoJsonUrl = 'https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/master/repo.json';
   
@@ -161,7 +156,7 @@ app.get('/api/cloudstream/repo', async (req, res) => {
     }
   }
 
-  let repoData: any = null;
+  let repoData = null;
   let syncSource = 'live';
 
   try {
@@ -178,10 +173,9 @@ app.get('/api/cloudstream/repo', async (req, res) => {
     console.warn('Live CloudStream repository fetch failed, falling back to cached snapshot:', err);
   }
 
-  // If live fetch was successful, parse plugins
   if (repoData && Array.isArray(repoData.plugins || repoData)) {
     const rawPlugins = repoData.plugins || repoData;
-    const plugins = rawPlugins.map((p: any) => ({
+    const plugins = rawPlugins.map((p) => ({
       name: p.name || p.internalName || 'Unnamed Provider',
       internalName: p.internalName || p.name || 'Provider',
       version: p.version || '1.0.0',
@@ -210,7 +204,6 @@ app.get('/api/cloudstream/repo', async (req, res) => {
     });
   }
 
-  // Fallback enriched snapshot for hexated/cloudstream-extensions-hexated
   const snapshotPlugins = [
     {
       name: "HiTV",
@@ -347,404 +340,112 @@ app.post('/api/cloudstream/sync', async (req, res) => {
 
 // Feed generator for CloudStream Providers
 app.get('/api/cloudstream/feed', (req, res) => {
-  const plugin = (req.query.plugin as string) || 'All';
+  const plugin = req.query.plugin || 'All';
   
-  const fullLibrary = [
+  const sampleLibrary = [
     {
-      id: "cs-loklok-the-affair",
-      title: "The Affair Was Just the Beginning",
-      year: "2026",
-      type: "Crime / Drama Series",
-      genre: "Crime",
-      runtime: "52m",
-      region: "International",
+      id: "cs-loklok-queen-of-tears",
+      title: "Queen of Tears",
+      year: "2024",
+      type: "K-Drama",
+      genre: "Drama",
+      runtime: "1h 15m",
+      region: "South Korea",
       rating: "TV-MA",
-      score: "9.0",
+      score: "9.3",
       seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 8,
-      episodeBadge: "Updated to 8",
-      releaseDate: "2026-02-10",
+      episodeNumber: 16,
+      releaseDate: "2024-04-28",
       isNew: true,
-      sourceLabel: "Loklok (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      sourceLabel: "Loklok CloudStream Provider",
+      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
       sources: [
-        { quality: "1080p FHD", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", mimeType: "video/mp4" },
-        { quality: "720p HD", label: "Loklok 720p HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", mimeType: "video/mp4" },
-        { quality: "480p Fast", label: "Loklok 480p Fast", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", mimeType: "video/mp4" }
+        { quality: "1080p", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", mimeType: "video/mp4" },
+        { quality: "720p", label: "Loklok 720p HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", mimeType: "video/mp4" }
       ],
       mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&auto=format&fit=crop&q=80",
-      summary: "When a high-profile design prototype disappears from an elite architecture firm, a scandalous secret affair unravels a web of corporate espionage, betrayal, and high-stakes romance.",
-      tags: ["Crime", "Drama", "Mystery", "Loklok", "Top Rated"],
+      poster: "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=600&auto=format&fit=crop&q=80",
+      cover: "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=600&auto=format&fit=crop&q=80",
+      backdrop: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80",
+      summary: "The queen of department stores and the prince of supermarkets weather a marital crisis until love miraculously begins to bloom again.",
+      tags: ["Romance", "K-Drama", "Loklok", "Top Rated"],
       subtitles: [
-        { label: "English CC", srclang: "en", url: "https://raw.githubusercontent.com/brenopolanski/html5-video-webvtt-example/master/subtitles/subtitles-en.vtt" }
+        { label: "English", srclang: "en", url: "https://raw.githubusercontent.com/brenopolanski/html5-video-webvtt-example/master/subtitles/subtitles-en.vtt" }
       ],
-      episodes: [
-        { id: "affair-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
-        { id: "affair-ep2", number: 2, title: "Whispers in the Lobby", duration: "49m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" },
-        { id: "affair-ep3", number: 3, title: "Secret In Berlin", duration: "51m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" },
-        { id: "affair-ep4", number: 4, title: "The Unsent Message", duration: "54m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" },
-        { id: "affair-ep5", number: 5, title: "Crossed Lines", duration: "50m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4" },
-        { id: "affair-ep6", number: 6, title: "Behind Closed Curtains", duration: "53m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4" },
-        { id: "affair-ep7", number: 7, title: "The Trap", duration: "55m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4" },
-        { id: "affair-ep8", number: 8, title: "Season Finale: Revelation", duration: "58m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" }
+      epg: [
+        { title: "Episode 16: A Miracle In Berlin", start: "21:00", end: "22:15", description: "The emotional finale of Hyun-woo and Hae-in." }
       ],
       providerId: "cloudstream-hexated-loklok",
-      providerName: "Loklok Provider (Hexated Repo)"
+      providerName: "Loklok Provider"
     },
     {
-      id: "cs-loklok-blossoming-love",
-      title: "The Blossoming Love",
-      year: "2024",
-      type: "C-Drama / Xianxia Romance",
-      genre: "Romance",
-      runtime: "45m",
-      region: "China",
-      rating: "TV-14",
-      score: "8.9",
-      seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 40,
-      episodeBadge: "All 40",
-      releaseDate: "2024-05-12",
-      isNew: false,
-      sourceLabel: "Loklok (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-      sources: [
-        { quality: "1080p FHD", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&auto=format&fit=crop&q=80",
-      summary: "In ancient mythological realms, the immortal heavenly master and a spirited herbal maiden cross realms to overcome ancient curses and find true love.",
-      tags: ["Romance", "Fantasy", "C-Drama", "Loklok", "Epic"],
-      subtitles: [],
-      episodes: [
-        { id: "blossom-ep1", number: 1, title: "Episode 1: The Lotus Pond Awakening", duration: "45m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" },
-        { id: "blossom-ep2", number: 2, title: "Episode 2: Descending into the Mortal Realm", duration: "44m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
-      ],
-      providerId: "cloudstream-hexated-loklok",
-      providerName: "Loklok Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-loklok-dragon-prince",
-      title: "The Dragon Prince: Mystery of Aaravos",
-      year: "2024",
-      type: "Animated Fantasy Series",
-      genre: "Anime",
-      runtime: "28m",
-      region: "Global",
-      rating: "TV-Y7",
-      score: "9.2",
-      seasonNumber: 6,
-      episodeNumber: 1,
-      totalEpisodes: 9,
-      episodeBadge: "All 9",
-      releaseDate: "2024-07-26",
-      isNew: true,
-      sourceLabel: "Loklok (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-      sources: [
-        { quality: "1080p FHD", label: "Loklok 1080p HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=1600&auto=format&fit=crop&q=80",
-      summary: "Two human princes forge an unlikely bond with the elfin assassin sent to kill them, embarking on an epic quest to bring peace to their warring lands.",
-      tags: ["Anime", "Fantasy", "Adventure", "Loklok"],
-      subtitles: [],
-      episodes: [
-        { id: "dp-ep1", number: 1, title: "Episode 1: Startouch Requiem", duration: "28m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" },
-        { id: "dp-ep2", number: 2, title: "Episode 2: The Red Pearl", duration: "27m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
-      ],
-      providerId: "cloudstream-hexated-loklok",
-      providerName: "Loklok Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-animepahe-solo-leveling",
-      title: "Solo Leveling: Shadow Monarch",
-      year: "2025",
-      type: "Anime Series",
-      genre: "Anime",
-      runtime: "24m",
-      region: "Japan",
-      rating: "TV-MA",
-      score: "9.8",
-      seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 12,
-      episodeBadge: "All 12",
-      releaseDate: "2025-01-20",
-      isNew: true,
-      sourceLabel: "AnimePahe (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-      sources: [
-        { quality: "1080p Ultra", label: "AnimePahe 1080p Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=1600&auto=format&fit=crop&q=80",
-      summary: "When Earth is invaded by deadly dimensional monsters, weak E-rank hunter Sung Jin-woo awakens a mysterious infinite leveling quest system.",
-      tags: ["Anime", "Action", "Fantasy", "AnimePahe", "Trending"],
-      subtitles: [],
-      episodes: [
-        { id: "sl-ep1", number: 1, title: "Episode 1: I'm Used to It", duration: "24m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" },
-        { id: "sl-ep2", number: 2, title: "Episode 2: If I Had One More Chance", duration: "24m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
-      ],
-      providerId: "cloudstream-hexated-animepahe",
-      providerName: "AnimePahe Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-loklok-twinkling-watermelon",
+      id: "cs-dramacool-twinkling-watermelon",
       title: "Twinkling Watermelon",
       year: "2024",
-      type: "K-Drama / Youth",
-      genre: "K-Drama",
+      type: "K-Drama",
+      genre: "Drama",
       runtime: "1h 05m",
       region: "South Korea",
       rating: "TV-14",
-      score: "9.4",
+      score: "9.2",
       seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 16,
-      episodeBadge: "All 16",
+      episodeNumber: 12,
       releaseDate: "2024-03-14",
       isNew: false,
-      sourceLabel: "Loklok (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+      sourceLabel: "DramaCool Provider",
+      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
       sources: [
-        { quality: "1080p Ultra", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4", mimeType: "video/mp4" }
+        { quality: "1080p", label: "DramaCool Fast 1080p", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4", mimeType: "video/mp4" }
       ],
       mimeType: "video/mp4",
       poster: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
       cover: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
       backdrop: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1600&auto=format&fit=crop&q=80",
-      summary: "A gifted CODA student with natural musical talent time-travels back to 1995 through a mysterious instrument store and forms a youth band.",
-      tags: ["Time Travel", "Music", "Youth", "Loklok", "K-Drama"],
+      summary: "A CODA student with a natural gift for music time-travels back to 1995 and forms a band with his high school-aged father.",
+      tags: ["Time Travel", "Music", "Youth", "DramaCool"],
       subtitles: [],
-      episodes: [
-        { id: "tw-ep1", number: 1, title: "Episode 1: Viva La Vida", duration: "1h 05m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4" }
-      ],
-      providerId: "cloudstream-hexated-loklok",
-      providerName: "Loklok Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-hitv-lovely-runner",
-      title: "Lovely Runner",
-      year: "2024",
-      type: "K-Drama / Time Travel Romance",
-      genre: "K-Drama",
-      runtime: "1h 10m",
-      region: "South Korea",
-      rating: "TV-14",
-      score: "9.7",
-      seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 16,
-      episodeBadge: "All 16",
-      releaseDate: "2024-05-28",
-      isNew: true,
-      sourceLabel: "HiTV (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      sources: [
-        { quality: "1080p FHD", label: "HiTV 1080p Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80",
-      summary: "A passionate fan is heartbroken by the tragic death of top idol Ryu Sun-jae. When a magical watch transports her into the past, she vows to save him.",
-      tags: ["K-Drama", "Romance", "Time Travel", "HiTV", "Popular"],
-      subtitles: [],
-      episodes: [
-        { id: "lr-ep1", number: 1, title: "Episode 1: The Yellow Umbrella", duration: "1h 10m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" }
-      ],
-      providerId: "cloudstream-hexated-hitv",
-      providerName: "HiTV Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-dramacool-hidden-love",
-      title: "Hidden Love",
-      year: "2024",
-      type: "C-Drama / Romance",
-      genre: "Romance",
-      runtime: "45m",
-      region: "China",
-      rating: "TV-PG",
-      score: "9.4",
-      seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 25,
-      episodeBadge: "All 25",
-      releaseDate: "2024-07-15",
-      isNew: false,
-      sourceLabel: "DramaCool (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-      sources: [
-        { quality: "1080p Ultra", label: "DramaCool 1080p", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&auto=format&fit=crop&q=80",
-      summary: "Sang Zhi falls in love with Duan Jia Xu, the boy who often visits her home to play games with her older brother.",
-      tags: ["C-Drama", "Romance", "Campus", "DramaCool"],
-      subtitles: [],
-      episodes: [
-        { id: "hl-ep1", number: 1, title: "Episode 1: The Brother's Friend", duration: "45m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" }
-      ],
+      epg: [],
       providerId: "cloudstream-hexated-dramacool",
-      providerName: "DramaCool Provider (Hexated Repo)"
+      providerName: "DramaCool Provider"
     },
     {
-      id: "cs-sflix-dune-prophecy",
-      title: "Dune: Prophecy",
-      year: "2025",
-      type: "Sci-Fi Series",
-      genre: "Sci-Fi",
-      runtime: "1h 02m",
-      region: "Global",
-      rating: "TV-MA",
-      score: "9.1",
-      seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 6,
-      episodeBadge: "All 6",
-      releaseDate: "2025-01-10",
-      isNew: true,
-      sourceLabel: "Sflix (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
-      sources: [
-        { quality: "1080p Ultra", label: "Sflix 1080p HD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=1600&auto=format&fit=crop&q=80",
-      summary: "Set 10,000 years before the ascension of Paul Atreides, following two Harkonnen sisters combating forces that threaten the future.",
-      tags: ["Sci-Fi", "Space", "Sflix", "Hollywood"],
-      subtitles: [],
-      episodes: [
-        { id: "dune-ep1", number: 1, title: "Episode 1: The Hidden Sisterhood", duration: "1h 02m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4" }
-      ],
-      providerId: "cloudstream-hexated-sflix",
-      providerName: "Sflix Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-superstream-oppenheimer",
-      title: "Quantum Continuum: Trinity",
-      year: "2024",
-      type: "Movie / Drama",
-      genre: "Movie",
-      runtime: "2h 45m",
-      region: "USA",
-      rating: "R",
-      score: "9.3",
-      totalEpisodes: 1,
-      episodeBadge: "Movie",
-      releaseDate: "2024-06-18",
-      isNew: false,
-      sourceLabel: "SuperStream (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
-      sources: [
-        { quality: "4K Cinema", label: "SuperStream 4K UHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80",
-      summary: "The story of American scientist J. Robert Oppenheimer and his role in the development of the atomic bomb.",
-      tags: ["History", "Drama", "SuperStream", "4K"],
-      subtitles: [],
-      episodes: [],
-      providerId: "cloudstream-hexated-superstream",
-      providerName: "SuperStream Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-hitv-moving",
-      title: "Moving: Superhuman Awakening",
-      year: "2024",
-      type: "Action / Superhero K-Drama",
-      genre: "K-Drama",
-      runtime: "58m",
-      region: "South Korea",
-      rating: "TV-MA",
-      score: "9.6",
-      seasonNumber: 1,
-      episodeNumber: 1,
-      totalEpisodes: 20,
-      episodeBadge: "All 20",
-      releaseDate: "2024-04-10",
-      isNew: true,
-      sourceLabel: "HiTV (Hexated Repo)",
-      sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-      sources: [
-        { quality: "1080p FHD", label: "HiTV 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4", mimeType: "video/mp4" }
-      ],
-      mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80",
-      backdrop: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80",
-      summary: "Children with hidden superpowers and their parents harbor painful secrets from their past while facing perils.",
-      tags: ["K-Drama", "Action", "Superpower", "HiTV"],
-      subtitles: [],
-      episodes: [
-        { id: "moving-ep1", number: 1, title: "Episode 1: Senior Year Flight", duration: "58m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" }
-      ],
-      providerId: "cloudstream-hexated-hitv",
-      providerName: "HiTV Provider (Hexated Repo)"
-    },
-    {
-      id: "cs-animepahe-demon-slayer",
-      title: "Demon Slayer: Hashira Training",
+      id: "cs-animepahe-solo-leveling",
+      title: "Solo Leveling: Shadow Monarch",
       year: "2024",
       type: "Anime Series",
       genre: "Anime",
       runtime: "24m",
-      region: "Japan",
+      region: "Japan / Korea",
       rating: "TV-MA",
-      score: "9.8",
-      seasonNumber: 4,
-      episodeNumber: 1,
-      totalEpisodes: 8,
-      episodeBadge: "All 8",
-      releaseDate: "2024-06-30",
+      score: "9.6",
+      seasonNumber: 1,
+      episodeNumber: 12,
+      releaseDate: "2024-03-30",
       isNew: true,
-      sourceLabel: "AnimePahe (Hexated Repo)",
+      sourceLabel: "AnimePahe Provider",
       sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
       sources: [
-        { quality: "1080p Ultra", label: "AnimePahe 1080p Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", mimeType: "video/mp4" }
+        { quality: "1080p", label: "AnimePahe 1080p Ultra", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", mimeType: "video/mp4" }
       ],
       mimeType: "video/mp4",
-      poster: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80",
-      cover: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80",
+      poster: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
+      cover: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
       backdrop: "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=1600&auto=format&fit=crop&q=80",
-      summary: "Tanjiro visits the Stone Hashira, Himejima, who prepares the Demon Slayer Corps for battle.",
-      tags: ["Anime", "Action", "Shonen", "AnimePahe"],
+      summary: "In a world where hunters battle deadly monsters to protect mankind, weak E-rank hunter Sung Jinwoo is chosen by a mysterious quest system.",
+      tags: ["Anime", "Action", "Fantasy", "AnimePahe"],
       subtitles: [],
-      episodes: [
-        { id: "ds-ep1", number: 1, title: "Episode 1: To Defeat Muzan Kibutsuji", duration: "48m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" }
+      epg: [
+        { title: "Episode 12: Arise", start: "23:00", end: "23:24", description: "Jinwoo faces the Job Change Dungeon." }
       ],
       providerId: "cloudstream-hexated-animepahe",
-      providerName: "AnimePahe Provider (Hexated Repo)"
+      providerName: "AnimePahe Provider"
     }
   ];
-
-  const filtered = (plugin && plugin !== 'All')
-    ? fullLibrary.filter(s => s.providerId.toLowerCase().includes(plugin.toLowerCase()) || (s.providerName || '').toLowerCase().includes(plugin.toLowerCase()))
-    : fullLibrary;
 
   res.json({
     provider: plugin,
     generatedAt: new Date().toISOString(),
-    totalCount: filtered.length,
-    shows: filtered
+    shows: sampleLibrary
   });
 });
 
@@ -764,8 +465,105 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Nebula Streams] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Nebula Streams] Server running on http://localhost:${PORT}`);
   });
 }
 
 startServer();
+app.get('/api/cloudstream/feed', async (req, res) => {
+  const plugin = (req.query.plugin) || 'LoklokProvider';
+  const tmdbKey = req.query.tmdbKey;
+
+  let shows = [];
+
+  if (tmdbKey && tmdbKey !== 'undefined' && tmdbKey.trim() !== '') {
+    try {
+      const response = await fetch(`https://api.themoviedb.org/3/trending/all/day?api_key=${tmdbKey}&language=en-US`);
+      const data = await response.json();
+      
+      shows = data.results.filter(r => r.poster_path).map(r => ({
+        id: `cs-${plugin}-${r.id}`,
+        title: r.title || r.name,
+        year: (r.release_date || r.first_air_date || '').split('-')[0],
+        type: r.media_type === 'movie' ? 'Movie' : 'TV Series',
+        genre: 'Trending',
+        runtime: '120m',
+        region: 'International',
+        rating: 'PG-13',
+        score: r.vote_average ? r.vote_average.toFixed(1) : 'N/A',
+        seasonNumber: 1,
+        episodeNumber: 1,
+        totalEpisodes: 1,
+        episodeBadge: r.media_type === 'movie' ? 'HD' : 'Series',
+        releaseDate: r.release_date || r.first_air_date,
+        isNew: true,
+        sourceLabel: `${plugin} (VidSrc)`,
+        sourceUrl: r.media_type === 'movie' 
+          ? `https://vidsrc.net/embed/movie?tmdb=${r.id}` 
+          : `https://vidsrc.net/embed/tv?tmdb=${r.id}`,
+        sources: [
+           { quality: "Auto", label: "Auto Server", url: r.media_type === 'movie' ? `https://vidsrc.net/embed/movie?tmdb=${r.id}` : `https://vidsrc.net/embed/tv?tmdb=${r.id}`, mimeType: "text/html" }
+        ],
+        mimeType: "text/html",
+        poster: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
+        cover: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
+        backdrop: `https://image.tmdb.org/t/p/w1280${r.backdrop_path}`,
+        summary: r.overview,
+        tags: ["Trending", plugin],
+        episodes: r.media_type === 'tv' ? [
+           { id: `ep-${r.id}-1`, number: 1, title: "Episode 1", duration: "45m", sourceUrl: `https://vidsrc.net/embed/tv?tmdb=${r.id}&season=1&episode=1` }
+        ] : [],
+        providerId: plugin,
+        providerName: `${plugin} (Hexated Repo)`
+      }));
+    } catch (e) {
+      console.error('TMDB fetch failed:', e);
+    }
+  }
+
+  // Fallback
+  if (shows.length === 0) {
+    shows = [
+      {
+        id: "cs-loklok-the-affair",
+        title: "The Affair Was Just the Beginning",
+        year: "2026",
+        type: "Crime / Drama Series",
+        genre: "Crime",
+        runtime: "52m",
+        region: "International",
+        rating: "TV-MA",
+        score: "9.0",
+        seasonNumber: 1,
+        episodeNumber: 1,
+        totalEpisodes: 8,
+        episodeBadge: "Updated to 8",
+        releaseDate: "2026-02-10",
+        isNew: true,
+        sourceLabel: "Loklok (Hexated Repo)",
+        sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+        sources: [
+          { quality: "1080p FHD", label: "Loklok 1080p FHD", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", mimeType: "video/mp4" }
+        ],
+        mimeType: "video/mp4",
+        poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80",
+        cover: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80",
+        backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&auto=format&fit=crop&q=80",
+        summary: "Please add a TMDB API Key in Admin Console to see real trending movies from your providers.",
+        tags: ["Loklok"],
+        episodes: [
+          { id: "affair-ep1", number: 1, title: "The Prototype Incident", duration: "52m", sourceUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
+        ],
+        providerId: "LoklokProvider",
+        providerName: "Loklok Provider (Hexated Repo)"
+      }
+    ];
+  }
+
+  res.json({
+    url: 'https://github.com/hexated/cloudstream-extensions-hexated/tree/master',
+    name: 'Hexated CloudStream Extensions',
+    plugin: plugin,
+    shows: shows
+  });
+});

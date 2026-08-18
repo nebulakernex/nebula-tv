@@ -103,8 +103,14 @@ export default function App() {
 
         saveSettings(updatedSettings);
 
+
         // Fetch active provider shows and merge with catalog
-        const feedRes = await fetch(`/api/cloudstream/feed?plugin=All`);
+        let activePlugin = 'All';
+        const enabledPlugins = updatedSettings.cloudstreamRepo.plugins.filter(p => p.enabled);
+        if (enabledPlugins.length > 0) activePlugin = enabledPlugins[0].internalName;
+        
+        const feedRes = await fetch(`/api/cloudstream/feed?plugin=${activePlugin}&tmdbKey=${updatedSettings.api.tmdbApiKey || ''}`);
+
         if (feedRes.ok) {
           const feedData = await feedRes.json();
           if (Array.isArray(feedData.shows) && feedData.shows.length > 0) {
@@ -392,7 +398,7 @@ export default function App() {
         onTestPluginFeed={async (plugin) => {
           setIsSyncing(true);
           try {
-            const res = await fetch(`/api/cloudstream/feed?plugin=${encodeURIComponent(plugin.internalName)}`);
+            const res = await fetch(`/api/cloudstream/feed?plugin=${encodeURIComponent(plugin.internalName)}&tmdbKey=${settings.api.tmdbApiKey || ''}`);
             const data = await res.json();
             if (data.shows?.length) {
               setPlaylist(prev => [...data.shows, ...prev]);
