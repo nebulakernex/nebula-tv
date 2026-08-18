@@ -124,14 +124,6 @@ export default function App() {
             .catch(e => { console.error('CS Fetch error', e); return []; })
         );
 
-        // Loklok API Promise
-        fetchPromises.push(
-          fetch('/api/loklok/home')
-            .then(res => res.json())
-            .then(data => data.shows || [])
-            .catch(e => { console.error('Loklok Fetch error', e); return []; })
-        );
-
         // Stremio Catalog Promises
         for (const provider of updatedSettings.providers) {
           if (provider.enabled && provider.type === 'stremio') {
