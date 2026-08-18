@@ -191,7 +191,7 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  }, [activeSettings, saveSettings]);
+  }, [settings, saveSettings]);
 
   // Initial Sync on Boot
   useEffect(() => {
