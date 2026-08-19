@@ -642,6 +642,57 @@ describe(
 
 
     it(
+      'reports provider health',
+      async () => {
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/health'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(200);
+
+
+        const health =
+          body.health as
+            Record<
+              string,
+              unknown
+            >;
+
+
+        expect(
+          health.provider
+        ).toBe(
+          'Anichi'
+        );
+
+
+        expect(
+          health.upstream
+        ).toBe(
+          'AniList'
+        );
+
+
+        expect([
+          'unknown',
+          'ok',
+          'degraded',
+          'unavailable'
+        ]).toContain(
+          health.status
+        );
+      }
+    );
+
+
+    it(
       'returns ADAPTER_NOT_INSTALLED for unknown provider',
       async () => {
         const {

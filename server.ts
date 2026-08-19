@@ -1,5 +1,7 @@
 import { adapters } from './server/adapters';
+import type { CloudstreamProviderAdapter } from './server/adapters/types';
 import express from 'express';
+import type { Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
@@ -353,35 +355,493 @@ app.get('/api/cloudstream/providers', (_req, res) => {
 
 
 // Provider Routes
-app.get('/api/providers/:provider/home', async (req, res) => {
-  const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
-  try { res.json({ ok: true, provider: req.params.provider, shows: await adapter.getHome() }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
-});
 
-app.get('/api/providers/:provider/search', async (req, res) => {
-  const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
-  try { res.json({ ok: true, provider: req.params.provider, query: req.query.q, shows: await adapter.search((req.query.q as string) || '') }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
-});
+async function readProviderHealth(
+  adapter:
+    CloudstreamProviderAdapter
+) {
+  if (
+    !adapter.getHealth
+  ) {
+    return null;
+  }
 
-app.get('/api/providers/:provider/details', async (req, res) => {
-  const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
-  try { res.json({ ok: true, provider: req.params.provider, item: await adapter.getDetails(req.query.id as string) }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
-});
+  return await adapter.getHealth();
+}
 
-app.get('/api/providers/:provider/episodes', async (req, res) => {
-  const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
-  try { res.json({ ok: true, provider: req.params.provider, episodes: await adapter.getEpisodes(req.query.id as string) }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
-});
 
-app.get('/api/providers/:provider/sources', async (req, res) => {
-  const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
-  try { res.json({ ok: true, provider: req.params.provider, sources: await adapter.resolveSources(req.query.id as string) }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
-});
+function sendProviderError(
+  res:
+    Response,
+
+  error:
+    unknown
+) {
+  const typed =
+    error as {
+      statusCode?: unknown;
+      code?: unknown;
+      message?: unknown;
+      retryAfterSeconds?: unknown;
+    };
+
+
+  const candidateStatus =
+    typeof typed.statusCode ===
+      'number'
+      ? typed.statusCode
+      : 500;
+
+
+  const statusCode =
+    candidateStatus >= 400 &&
+    candidateStatus <= 599
+      ? candidateStatus
+      : 500;
+
+
+  const retryAfterSeconds =
+    typeof
+      typed.retryAfterSeconds ===
+      'number'
+      ? Math.max(
+          1,
+          Math.ceil(
+            typed.retryAfterSeconds
+          )
+        )
+      : undefined;
+
+
+  if (
+    retryAfterSeconds
+  ) {
+    res.set(
+      'Retry-After',
+      String(
+        retryAfterSeconds
+      )
+    );
+  }
+
+
+  res.status(
+    statusCode
+  ).json({
+    ok:
+      false,
+
+    code:
+      typeof typed.code ===
+        'string'
+        ? typed.code
+        : 'PROVIDER_REQUEST_FAILED',
+
+    error:
+      typeof typed.message ===
+        'string'
+        ? typed.message
+        : 'Provider request failed',
+
+    ...(retryAfterSeconds
+      ? {
+          retryAfterSeconds
+        }
+      : {})
+  });
+}
+
+
+app.get(
+  '/api/providers/:provider/health',
+
+  async (
+    req,
+    res
+  ) => {
+    const adapter =
+      adapters[
+        req.params.provider
+      ];
+
+
+    if (!adapter) {
+      return res
+        .status(404)
+        .json({
+          ok:
+            false,
+
+          code:
+            'ADAPTER_NOT_INSTALLED',
+
+          provider:
+            req.params.provider,
+
+          message:
+            'Adapter not installed'
+        });
+    }
+
+
+    try {
+      res.json({
+        ok:
+          true,
+
+        provider:
+          req.params.provider,
+
+        health:
+          await readProviderHealth(
+            adapter
+          )
+      });
+
+    } catch (error) {
+      sendProviderError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+
+app.get(
+  '/api/providers/:provider/home',
+
+  async (
+    req,
+    res
+  ) => {
+    const adapter =
+      adapters[
+        req.params.provider
+      ];
+
+
+    if (!adapter) {
+      return res
+        .status(404)
+        .json({
+          ok:
+            false,
+
+          code:
+            'ADAPTER_NOT_INSTALLED',
+
+          provider:
+            req.params.provider,
+
+          message:
+            'Adapter not installed'
+        });
+    }
+
+
+    try {
+      const shows =
+        await adapter
+          .getHome();
+
+
+      res.json({
+        ok:
+          true,
+
+        provider:
+          req.params.provider,
+
+        shows,
+
+        health:
+          await readProviderHealth(
+            adapter
+          )
+      });
+
+    } catch (error) {
+      sendProviderError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+
+app.get(
+  '/api/providers/:provider/search',
+
+  async (
+    req,
+    res
+  ) => {
+    const adapter =
+      adapters[
+        req.params.provider
+      ];
+
+
+    if (!adapter) {
+      return res
+        .status(404)
+        .json({
+          ok:
+            false,
+
+          code:
+            'ADAPTER_NOT_INSTALLED',
+
+          provider:
+            req.params.provider,
+
+          message:
+            'Adapter not installed'
+        });
+    }
+
+
+    try {
+      const query =
+        (
+          req.query.q as
+          string
+        ) ||
+        '';
+
+
+      const shows =
+        await adapter.search(
+          query
+        );
+
+
+      res.json({
+        ok:
+          true,
+
+        provider:
+          req.params.provider,
+
+        query,
+
+        shows,
+
+        health:
+          await readProviderHealth(
+            adapter
+          )
+      });
+
+    } catch (error) {
+      sendProviderError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+
+app.get(
+  '/api/providers/:provider/details',
+
+  async (
+    req,
+    res
+  ) => {
+    const adapter =
+      adapters[
+        req.params.provider
+      ];
+
+
+    if (!adapter) {
+      return res
+        .status(404)
+        .json({
+          ok:
+            false,
+
+          code:
+            'ADAPTER_NOT_INSTALLED',
+
+          provider:
+            req.params.provider,
+
+          message:
+            'Adapter not installed'
+        });
+    }
+
+
+    try {
+      const item =
+        await adapter
+          .getDetails(
+            req.query.id as
+            string
+          );
+
+
+      res.json({
+        ok:
+          true,
+
+        provider:
+          req.params.provider,
+
+        item,
+
+        health:
+          await readProviderHealth(
+            adapter
+          )
+      });
+
+    } catch (error) {
+      sendProviderError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+
+app.get(
+  '/api/providers/:provider/episodes',
+
+  async (
+    req,
+    res
+  ) => {
+    const adapter =
+      adapters[
+        req.params.provider
+      ];
+
+
+    if (!adapter) {
+      return res
+        .status(404)
+        .json({
+          ok:
+            false,
+
+          code:
+            'ADAPTER_NOT_INSTALLED',
+
+          provider:
+            req.params.provider,
+
+          message:
+            'Adapter not installed'
+        });
+    }
+
+
+    try {
+      const episodes =
+        await adapter
+          .getEpisodes(
+            req.query.id as
+            string
+          );
+
+
+      res.json({
+        ok:
+          true,
+
+        provider:
+          req.params.provider,
+
+        episodes,
+
+        health:
+          await readProviderHealth(
+            adapter
+          )
+      });
+
+    } catch (error) {
+      sendProviderError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+
+app.get(
+  '/api/providers/:provider/sources',
+
+  async (
+    req,
+    res
+  ) => {
+    const adapter =
+      adapters[
+        req.params.provider
+      ];
+
+
+    if (!adapter) {
+      return res
+        .status(404)
+        .json({
+          ok:
+            false,
+
+          code:
+            'ADAPTER_NOT_INSTALLED',
+
+          provider:
+            req.params.provider,
+
+          message:
+            'Adapter not installed'
+        });
+    }
+
+
+    try {
+      const sources =
+        await adapter
+          .resolveSources(
+            req.query.id as
+            string
+          );
+
+
+      res.json({
+        ok:
+          true,
+
+        provider:
+          req.params.provider,
+
+        sources,
+
+        health:
+          await readProviderHealth(
+            adapter
+          )
+      });
+
+    } catch (error) {
+      sendProviderError(
+        res,
+        error
+      );
+    }
+  }
+);
+
 
 // JSON 404 Handler for API routes
 app.use('/api/*', (_req, res) => {

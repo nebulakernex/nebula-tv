@@ -41,31 +41,81 @@ export interface ProviderShow {
   providerName?: string;
 }
 
+export interface ProviderHealthStatus {
+  provider: string;
+  upstream: string;
+
+  status:
+    | 'unknown'
+    | 'ok'
+    | 'degraded'
+    | 'unavailable';
+
+  lastSuccessAt:
+    string | null;
+
+  lastError:
+    string | null;
+
+  servedStaleAt:
+    string | null;
+
+  rateLimitLimit:
+    number | null;
+
+  rateLimitRemaining:
+    number | null;
+
+  rateLimitReset:
+    number | null;
+
+  cooldownUntil:
+    string | null;
+
+  cacheEntries:
+    number;
+
+  inFlightRequests:
+    number;
+
+  timeoutMs:
+    number;
+}
+
 export interface CloudstreamProviderAdapter {
   id: string;
   name: string;
 
   /*
    * Playback allow-list only.
-   * Keep empty during catalog-only Phase B.
+   * Catalog APIs do not belong here.
    */
   allowedHosts: string[];
 
-  getHome(): Promise<ProviderShow[]>;
+  getHome():
+    Promise<ProviderShow[]>;
 
   search(
     query: string
-  ): Promise<ProviderShow[]>;
+  ):
+    Promise<ProviderShow[]>;
 
   getDetails(
     id: string
-  ): Promise<ProviderShow | null>;
+  ):
+    Promise<ProviderShow | null>;
 
   getEpisodes(
     id: string
-  ): Promise<ProviderEpisode[]>;
+  ):
+    Promise<ProviderEpisode[]>;
 
   resolveSources(
     id: string
-  ): Promise<ProviderVideoSource[]>;
+  ):
+    Promise<ProviderVideoSource[]>;
+
+  getHealth?():
+    | ProviderHealthStatus
+    | Promise<ProviderHealthStatus>;
 }
