@@ -1,66 +1,4 @@
 {
-  "version": 1,
-  "playback": {
-    "autoplayNext": true,
-    "countdownSeconds": 7,
-    "defaultSpeed": 1,
-    "speeds": "0.5,0.75,1,1.25,1.5,1.75,2",
-    "rememberSpeed": true
-  },
-  "providers": [
-    {
-      "id": "cloudstream-hexated-repo",
-      "name": "Hexated CloudStream Extensions Repository",
-      "enabled": true,
-      "endpoint": "/api/providers/Anichi/home",
-      "useProxy": true,
-      "rootPath": "shows",
-      "refreshMinutes": 15,
-      "headersJson": "",
-      "mappings": {
-        "id": "id",
-        "title": "title",
-        "year": "year",
-        "type": "type",
-        "genre": "genre",
-        "runtime": "runtime",
-        "region": "region",
-        "rating": "rating",
-        "sourceLabel": "sourceLabel",
-        "sourceUrl": "sourceUrl",
-        "sources": "sources",
-        "source1080": "source1080",
-        "source780": "source780",
-        "source720": "source720",
-        "source480": "source480",
-        "quality": "quality",
-        "mimeType": "mimeType",
-        "poster": "poster",
-        "cover": "cover",
-        "backdrop": "backdrop",
-        "logo": "logo",
-        "summary": "summary",
-        "tags": "tags",
-        "episodes": "episodes",
-        "episodeTitle": "episodeTitle",
-        "episodeNumber": "episodeNumber",
-        "seasonNumber": "seasonNumber",
-        "releaseDate": "releaseDate",
-        "isNew": "isNew",
-        "subtitleUrl": "subtitleUrl",
-        "subtitles": "subtitles",
-        "epg": "epg",
-        "player": "player",
-        "score": "score"
-      },
-      "type": "cloudstream",
-      "repoUrl": "https://github.com/hexated/cloudstream-extensions-hexated/tree/master"
-    }
-  ],
-  "diagnostics": {
-    "enabled": true
-  },
-  "test": "data",
   "brandName": "Nebula Streams",
   "logoUrl": "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=128&auto=format&fit=crop&q=80",
   "colors": {
@@ -76,8 +14,8 @@
     "accent3": "#22c55e"
   },
   "api": {
-    "enabled": true,
-    "endpoint": "/api/providers/Anichi/home",
+    "enabled": false,
+    "endpoint": "",
     "useProxy": true,
     "rootPath": "shows",
     "refreshMinutes": 15,
@@ -94,10 +32,6 @@
       "sourceLabel": "sourceLabel",
       "sourceUrl": "sourceUrl",
       "sources": "sources",
-      "source1080": "source1080",
-      "source780": "source780",
-      "source720": "source720",
-      "source480": "source480",
       "quality": "quality",
       "mimeType": "mimeType",
       "poster": "poster",
@@ -119,166 +53,17 @@
       "score": "score"
     }
   },
+  "providers": [],
   "cloudstreamRepo": {
     "url": "https://github.com/hexated/cloudstream-extensions-hexated/tree/master",
     "name": "Hexated CloudStream Extensions",
-    "description": "Official Hexated repository for CloudStream 3 extensions (Synced via Nebula Streams).",
+    "description": "Official Hexated repository for CloudStream 3 extensions.",
     "author": "Hexated",
     "autoSync": true,
     "syncIntervalMinutes": 15,
     "lastSyncedAt": "2026-08-19T04:54:47.973Z",
     "status": "synced",
-    "plugins": [
-      {
-        "name": "HiTV",
-        "internalName": "HiTVProvider",
-        "version": "1.4.2",
-        "description": "High-definition Korean, Chinese, and Thai dramas, variety programs, and continuous episode feeds.",
-        "authors": [
-          "Hexated",
-          "NebulaDev"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "AsianDrama",
-          "TvSeries",
-          "Variety"
-        ],
-        "lang": "en/ko/zh",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/HiTVProvider/home"
-      },
-      {
-        "name": "Loklok",
-        "internalName": "LoklokProvider",
-        "version": "2.1.0",
-        "description": "Popular Asian entertainment, blockbuster cinema, anime series, and trending dramas with multi-quality streams.",
-        "authors": [
-          "Hexated"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "Movie",
-          "TvSeries",
-          "Anime",
-          "AsianDrama"
-        ],
-        "lang": "all",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/LoklokProvider/home"
-      },
-      {
-        "name": "DramaCool",
-        "internalName": "DramaCoolProvider",
-        "version": "3.0.5",
-        "description": "Comprehensive catalog of ongoing and completed Asian dramas with English subs and fast episode releases.",
-        "authors": [
-          "Hexated",
-          "Storm"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "AsianDrama",
-          "Movie"
-        ],
-        "lang": "en",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/DramaCoolProvider/home"
-      },
-      {
-        "name": "Sflix",
-        "internalName": "SflixProvider",
-        "version": "1.8.0",
-        "description": "Global Hollywood movies, top-rated TV series, and trending box office hits with multi-server playback.",
-        "authors": [
-          "Hexated"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "Movie",
-          "TvSeries"
-        ],
-        "lang": "en",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/SflixProvider/home"
-      },
-      {
-        "name": "AnimePahe",
-        "internalName": "AnimePaheProvider",
-        "version": "2.3.1",
-        "description": "Lightweight anime streaming index with crisp encodes, seasonal simulcasts, and subtitle options.",
-        "authors": [
-          "Hexated"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "Anime"
-        ],
-        "lang": "ja/en",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/AnimePaheProvider/home"
-      },
-      {
-        "name": "KissKh",
-        "internalName": "KissKhProvider",
-        "version": "1.2.9",
-        "description": "High speed Asian drama releases, K-dramas, C-dramas, anime and variety with multiple resolution options.",
-        "authors": [
-          "Hexated"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "AsianDrama",
-          "Movie"
-        ],
-        "lang": "en",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/KissKhProvider/home"
-      },
-      {
-        "name": "SuperStream",
-        "internalName": "SuperStreamProvider",
-        "version": "2.0.4",
-        "description": "Fast 1080p and 4K cinema streams with Dolby audio and extensive subtitle language packages.",
-        "authors": [
-          "Hexated",
-          "CloudStreamTeam"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "Movie",
-          "TvSeries"
-        ],
-        "lang": "en",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/SuperStreamProvider/home"
-      },
-      {
-        "name": "Bilibili",
-        "internalName": "BilibiliProvider",
-        "version": "1.9.0",
-        "description": "Official and community anime streams, donghua, clips, and Asian animations with custom captions.",
-        "authors": [
-          "Hexated"
-        ],
-        "iconUrl": "https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80",
-        "tvTypes": [
-          "Anime",
-          "Donghua"
-        ],
-        "lang": "zh/en/id",
-        "status": 1,
-        "enabled": true,
-        "sampleEndpoint": "/api/providers/BilibiliProvider/home"
-      }
-    ]
+    "plugins": []
   },
   "platform": {
     "tvMode": false,

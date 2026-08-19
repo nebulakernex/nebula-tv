@@ -128,19 +128,21 @@ export default function App() {
         const tmdbKey = updatedSettings.api.tmdbApiKey || '';
         
         // 1. Setup Fetch Promises
-        let activePlugin = 'All';
-        const enabledPlugins = updatedSettings.cloudstreamRepo.plugins.filter(p => p.enabled);
-        if (enabledPlugins.length > 0) activePlugin = enabledPlugins[0].internalName;
+        let activePlugin = null;
+        const playablePlugins = updatedSettings.cloudstreamRepo.plugins.filter(p => p.enabled && p.adapterAvailable);
+        if (playablePlugins.length > 0) activePlugin = playablePlugins[0].internalName;
         
         const fetchPromises = [];
         
         // Cloudstream Feed Promise
-        fetchPromises.push(
-          fetch(`/api/providers/${activePlugin}/home`)
-            .then(res => res.json())
-            .then(data => data.shows || [])
-            .catch(e => { console.error('CS Fetch error', e); return []; })
-        );
+        if (activePlugin) {
+          fetchPromises.push(
+            fetch(`/api/providers/${activePlugin}/home`)
+              .then(res => res.json())
+              .then(data => data.shows || [])
+              .catch(e => { console.error('CS Fetch error', e); return []; })
+          );
+        }
 
         // Stremio Catalog Promises
         for (const provider of updatedSettings.providers) {

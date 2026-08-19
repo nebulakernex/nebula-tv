@@ -234,24 +234,37 @@ interface CloudstreamProviderAdapter {
 const adapters: Record<string, CloudstreamProviderAdapter> = {};
 let cachedPlugins: any[] = [];
 
-app.post('/api/cloudstream/sync', async (req, res) => {
+
+async function syncCloudstreamRegistry() {
   try {
     const response = await fetch('https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds/plugins.json');
     if (!response.ok) throw new Error('Fetch failed');
     const plugins = await response.json();
-    cachedPlugins = plugins.map((p: any) => ({
+    cachedPlugins = plugins.map((p) => ({
       ...p,
-      enabled: true,
+      enabled: p.status === 1,
       runtime: 'cloudstream',
       adapterAvailable: !!adapters[p.internalName],
       playable: false
     }));
-    res.json({
+    return {
       ok: true, source: 'hexated', manifest: 'plugins.json',
-      pluginsDiscovered: plugins.length, active: plugins.filter((p: any) => p.status === 1).length,
-      disabled: plugins.filter((p: any) => p.status === 0).length, syncedAt: new Date().toISOString()
-    });
-  } catch (e: any) { res.status(500).json({ ok: false, error: e.message }); }
+      pluginsDiscovered: plugins.length, active: plugins.filter((p) => p.status === 1).length,
+      disabled: plugins.filter((p) => p.status === 0).length, syncedAt: new Date().toISOString()
+    };
+  } catch (e) {
+    console.error('Registry sync failed:', e.message);
+    throw e;
+  }
+}
+
+app.post('/api/cloudstream/sync', async (req, res) => {
+  try {
+    const result = await syncCloudstreamRegistry();
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.get('/api/cloudstream/providers', (req, res) => res.json({ providers: cachedPlugins }));
@@ -300,4 +313,5 @@ async function startServer() {
   }
   app.listen(PORT, '0.0.0.0', () => console.log(`Running on port ${PORT}`));
 }
+syncCloudstreamRegistry().catch(console.error);
 startServer();

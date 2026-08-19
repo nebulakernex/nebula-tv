@@ -433,7 +433,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       }
                     }}
                     className="w-full h-10 px-3 rounded-lg bg-black border border-white/10 text-xs font-mono text-zinc-200 focus:outline-none focus:border-[#7000FF]"
-                    placeholder="https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/master/repo.json"
+                    placeholder="https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/master/plugins.json"
                   />
                   <p className="text-[11px] text-zinc-500">
                     Points to Hexated's official extensions index or any custom CloudStream multi-extension repo.
