@@ -163,7 +163,24 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     return [];
   }, [currentEpisode, item]);
 
-  const activeSource: VideoSource | undefined = playableSources[selectedQualityIndex] || playableSources[0];
+  const activeSource: VideoSource | undefined =
+    playableSources[
+      selectedQualityIndex
+    ] ||
+    playableSources[0];
+
+  /*
+   * Catalog metadata and playable
+   * media are separate concerns.
+   *
+   * Phase B2 can contain full details
+   * and episodes while having zero
+   * playback sources.
+   */
+  const hasPlayableSource =
+    Boolean(
+      activeSource?.url
+    );
 
   // Subtitles
   const subtitleTracks: SubtitleTrack[] = item.subtitles || [];
@@ -560,8 +577,59 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             onMouseLeave={() => isPlaying && setShowControls(false)}
             className="relative rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl aspect-video select-none group flex items-center justify-center"
           >
-            {/* Native HTML5 Video or Embed */}
-            {activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc') ? (
+            {/* Native HTML5 Video, Embed, or Catalog-Only State */}
+            {!hasPlayableSource ? (
+              <div
+                className="absolute inset-0 flex items-center justify-center overflow-hidden bg-black"
+              >
+                {(item.backdrop || item.poster) && (
+                  <div
+                    className="absolute inset-0 bg-cover bg-center opacity-35 scale-105"
+                    style={{
+                      backgroundImage:
+                        `url("${item.backdrop || item.poster}")`
+                    }}
+                  />
+                )}
+
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/65 to-black/40" />
+
+                <div className="relative z-10 max-w-lg px-8 text-center">
+
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 mb-5 rounded-full border border-[#7000FF]/40 bg-[#7000FF]/15 text-[#c084fc] text-[10px] font-black uppercase tracking-[0.22em]">
+                    Catalog Mode
+                  </div>
+
+                  <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+                    {item.title}
+                  </h3>
+
+                  <p className="mt-3 text-sm text-zinc-300 leading-relaxed">
+                    Metadata and episode information are available.
+                    No playback source is connected to this title.
+                  </p>
+
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+
+                    <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-zinc-300">
+                      {currentEpisodeList.length > 0
+                        ? `${currentEpisodeList.length} Episodes Indexed`
+                        : 'Metadata Available'}
+                    </span>
+
+                    <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                      Catalog Connected
+                    </span>
+
+                    <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-zinc-400">
+                      Playback Offline
+                    </span>
+
+                  </div>
+
+                </div>
+              </div>
+            ) : activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc') ? (
               <iframe
                 key={`${item.id}-${activeSeasonIndex}-${activeEpisodeIndex}-${selectedQualityIndex}`}
                 src={activeSource?.url}
@@ -629,7 +697,9 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* Custom Live Subtitle Overlay (Controlled by user font size, color, background) */}
-            {activeSubtitleTrack >= 0 && currentSubtitleText && (
+            {hasPlayableSource &&
+              activeSubtitleTrack >= 0 &&
+              currentSubtitleText && (
               <div className="absolute inset-x-8 bottom-16 sm:bottom-20 flex justify-center pointer-events-none z-20">
                 <p 
                   className={`text-center font-medium tracking-wide transition-all ${getSubtitleFontSizeClass()} ${getSubtitleColorClass()} ${getSubtitleBgClass()}`}
@@ -641,14 +711,18 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* Subtle Mini Buffering Spinner (Loklok silent auto-switch) */}
-            {isBuffering && (
+            {hasPlayableSource &&
+              isBuffering && (
               <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none z-10">
                 <div className="w-10 h-10 border-3 border-white/20 border-t-[#ff2d75] rounded-full animate-spin shadow-lg" />
               </div>
             )}
 
             {/* Centered Big Play button when paused */}
-            {!(activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc')) && !isPlaying && !isBuffering && (
+            {hasPlayableSource &&
+              !(activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc')) &&
+              !isPlaying &&
+              !isBuffering && (
               <div 
                 onClick={togglePlay}
                 className="absolute inset-0 bg-black/40 hover:bg-black/25 flex items-center justify-center cursor-pointer transition-colors z-10"
@@ -752,7 +826,8 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* ================= FLOATING LOKLOK OVERLAY CONTROLS ================= */}
-            {!(activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc')) && (
+            {hasPlayableSource &&
+            !(activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc')) && (
             <div 
               className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-3 sm:p-4 pt-12 space-y-2.5 transition-opacity duration-300 z-30 ${
                 showControls || !isPlaying ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'

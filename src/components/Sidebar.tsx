@@ -45,10 +45,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <h2 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#7000FF] mb-3 px-1">Library Index</h2>
           <nav className="space-y-1">
             {categories.map((category) => {
-              const count = category === 'All'
-                ? playlist.length
-                : playlist.filter(item => (item.genre || '').toLowerCase() === category.toLowerCase()).length;
-              const isActive = activeCategory.toLowerCase() === category.toLowerCase();
+              const categoryKey =
+                category.toLowerCase();
+
+              const count =
+                category === 'All'
+                  ? playlist.length
+                  : playlist.filter(
+                      item => {
+                        const genre =
+                          (
+                            item.genre ||
+                            ''
+                          ).toLowerCase();
+
+                        const type =
+                          (
+                            item.type ||
+                            ''
+                          ).toLowerCase();
+
+                        const tags =
+                          (
+                            item.tags ||
+                            []
+                          ).map(
+                            tag =>
+                              tag.toLowerCase()
+                          );
+
+                        return (
+                          genre ===
+                            categoryKey ||
+
+                          genre.includes(
+                            categoryKey
+                          ) ||
+
+                          type.includes(
+                            categoryKey
+                          ) ||
+
+                          tags.some(
+                            tag =>
+                              tag.includes(
+                                categoryKey
+                              )
+                          )
+                        );
+                      }
+                    ).length;
+
+              const isActive =
+                activeCategory
+                  .toLowerCase() ===
+                categoryKey;
 
               return (
                 <button
