@@ -5,8 +5,7 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { Readable } from 'stream';
 
-const currentDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(new URL(import.meta.url).href).replace(/^\/([A-Z]:)/, '$1');
-const app = express();
+export const app = express();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
@@ -23,7 +22,11 @@ app.use((req, res, next) => {
 });
 
 // Basic Auth
-if (process.env.NEBULA_BASIC_USER && process.env.NEBULA_BASIC_PASSWORD) {
+if (
+  process.env.NODE_ENV !== 'test' &&
+  process.env.NEBULA_BASIC_USER &&
+  process.env.NEBULA_BASIC_PASSWORD
+) {
   app.use((req, res, next) => {
     if (req.path === '/api/health') return next();
     
@@ -412,4 +415,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
