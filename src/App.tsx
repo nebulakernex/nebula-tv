@@ -15,7 +15,8 @@ import SourceDrawer from './components/SourceDrawer';
 import {
   AppSettings,
   ShowItem,
-  CloudstreamPlugin
+  CloudstreamPlugin,
+  ProviderHealthStatus
 } from './types';
 
 import {
@@ -181,7 +182,10 @@ function App() {
     providerHealth,
     setProviderHealth
   ] =
-    useState<any>(
+    useState<
+      ProviderHealthStatus |
+      null
+    >(
       null
     );
 
@@ -211,6 +215,17 @@ function App() {
     >(null);
 
 
+  const providerSwitchInitializedRef =
+    useRef(false);
+
+
+  const previousActiveProviderRef =
+    useRef<
+      string |
+      null
+    >(null);
+
+
   /*
    * Used by asynchronous home loading
    * to know whether the user has begun
@@ -225,6 +240,92 @@ function App() {
     getActiveCatalogProvider(
       settings
     );
+
+
+  /*
+   * Provider health polling only reads
+   * Nebula's local health state.
+   *
+   * It does NOT contact AniList.
+   */
+  useEffect(
+    () => {
+      if (
+        !isSettingsLoaded ||
+        !activeProvider
+      ) {
+        setProviderHealth(
+          null
+        );
+
+        return;
+      }
+
+      let cancelled =
+        false;
+
+
+      async function refreshHealth() {
+        try {
+          const data =
+            await fetchJson<{
+              health?:
+                ProviderHealthStatus;
+            }>(
+              '/api/providers/' +
+              activeProvider +
+              '/health'
+            );
+
+
+          if (
+            !cancelled &&
+            data.health
+          ) {
+            setProviderHealth(
+              data.health
+            );
+          }
+
+        } catch {
+          /*
+           * Catalog requests already
+           * provide user-facing recovery.
+           *
+           * Do not replace useful health
+           * state because a background
+           * poll failed.
+           */
+        }
+      }
+
+
+      void refreshHealth();
+
+
+      const timer =
+        setInterval(
+          () => {
+            void refreshHealth();
+          },
+          30000
+        );
+
+
+      return () => {
+        cancelled =
+          true;
+
+        clearInterval(
+          timer
+        );
+      };
+    },
+    [
+      isSettingsLoaded,
+      activeProvider
+    ]
+  );
 
 
   const cancelCatalogRetry =
@@ -246,6 +347,128 @@ function App() {
       },
       []
     );
+
+
+  /*
+   * Switching providers must never leave
+   * cards, search results, health state,
+   * or pagination from the old adapter
+   * visible in the new adapter.
+   */
+  useEffect(
+    () => {
+
+      if (
+        !isSettingsLoaded
+      ) {
+        return;
+      }
+
+
+      if (
+        !providerSwitchInitializedRef
+          .current
+      ) {
+
+        providerSwitchInitializedRef
+          .current =
+          true;
+
+        previousActiveProviderRef
+          .current =
+          activeProvider;
+
+        return;
+      }
+
+
+      if (
+        previousActiveProviderRef
+          .current ===
+        activeProvider
+      ) {
+        return;
+      }
+
+
+      previousActiveProviderRef
+        .current =
+        activeProvider;
+
+
+      cancelCatalogRetry();
+
+
+      searchQueryRef.current =
+        '';
+
+
+      setSearchQuery(
+        ''
+      );
+
+
+      setHomePlaylist(
+        []
+      );
+
+
+      setPlaylist(
+        []
+      );
+
+
+      setActiveId(
+        ''
+      );
+
+
+      setActiveCategory(
+        'All'
+      );
+
+
+      setActiveView(
+        'home'
+      );
+
+
+      setHomePage(
+        1
+      );
+
+
+      setSearchPage(
+        1
+      );
+
+
+      setHasMoreHome(
+        false
+      );
+
+
+      setHasMoreSearch(
+        false
+      );
+
+
+      setProviderHealth(
+        null
+      );
+
+
+      setCatalogNotice(
+        null
+      );
+
+    },
+    [
+      activeProvider,
+      isSettingsLoaded,
+      cancelCatalogRetry
+    ]
+  );
 
 
   const retryCatalogNow =
@@ -569,56 +792,93 @@ function App() {
 
           setSettings(
             previous => {
+
+              const previousPlugins =
+                previous
+                  .cloudstreamRepo
+                  ?.plugins ||
+                [];
+
+
               const existingMap =
-                new Map(
-                  (
-                    previous as any
+                new Map<
+                  string,
+                  boolean
+                >(
+                  previousPlugins.map(
+                    plugin => [
+                      plugin.internalName,
+                      plugin.enabled
+                    ]
                   )
-                    .cloudstreamRepo
-                    ?.plugins
-                    ?.map(
-                      (
-                        plugin:
-                          any
-                      ) => [
-                        plugin.internalName,
-                        plugin.enabled
-                      ]
-                    ) ||
-                  []
                 );
+
 
               const mergedPlugins =
                 incomingPlugins.map(
                   plugin => {
-                    const userEnabled =
-                      existingMap.has(
+
+                    const previousEnabled =
+                      existingMap.get(
                         plugin.internalName
-                      )
-                        ? existingMap.get(
-                            plugin.internalName
-                          )
-                        : true;
+                      );
+
+
+                    const enabled =
+                      plugin.status === 1 &&
+                      plugin.adapterAvailable &&
+                      (
+                        previousEnabled ??
+                        true
+                      );
+
 
                     return {
                       ...plugin,
-
-                      enabled:
-                        plugin.status ===
-                        1
-                          ? userEnabled
-                          : false
+                      enabled
                     };
                   }
                 );
 
+
+              const usableProviders =
+                mergedPlugins.filter(
+                  plugin =>
+                    plugin.enabled &&
+                    plugin.adapterAvailable &&
+                    plugin.status === 1
+                );
+
+
+              const preferredStillValid =
+                Boolean(
+                  previous.catalogProviderId &&
+                  usableProviders.some(
+                    plugin =>
+                      plugin.internalName ===
+                      previous
+                        .catalogProviderId
+                  )
+                );
+
+
+              const nextCatalogProviderId =
+                preferredStillValid
+                  ? previous
+                      .catalogProviderId
+                  : usableProviders[0]
+                      ?.internalName;
+
+
               return {
                 ...previous,
 
+                catalogProviderId:
+                  nextCatalogProviderId,
+
                 cloudstreamRepo: {
-                  ...(
-                    previous as any
-                  ).cloudstreamRepo,
+                  ...previous
+                    .cloudstreamRepo,
 
                   lastSyncedAt:
                     new Date()
@@ -627,12 +887,16 @@ function App() {
                   status:
                     'synced',
 
+                  errorMessage:
+                    undefined,
+
                   plugins:
                     mergedPlugins
                 }
               };
             }
           );
+
         } catch (error) {
           console.error(
             'Sync failed:',
@@ -1493,8 +1757,79 @@ function App() {
 
 
   /* =======================================================
-     PROVIDER ENABLE / DISABLE
+     PROVIDER SELECTION / ENABLE / DISABLE
      ======================================================= */
+
+  const handleSelectCatalogProvider =
+    (
+      internalName:
+        string
+    ) => {
+
+      const repo =
+        settings
+          .cloudstreamRepo;
+
+
+      if (!repo) {
+        return;
+      }
+
+
+      const selected =
+        repo.plugins.find(
+          plugin =>
+            plugin.internalName ===
+            internalName
+        );
+
+
+      if (
+        !selected ||
+        !selected.adapterAvailable ||
+        selected.status === 0
+      ) {
+        return;
+      }
+
+
+      /*
+       * Selecting a provider also ensures
+       * it is enabled.
+       *
+       * Other installed providers may
+       * remain enabled, but only this one
+       * becomes the active catalog.
+       */
+      const updatedPlugins =
+        repo.plugins.map(
+          plugin =>
+            plugin.internalName ===
+            internalName
+              ? {
+                  ...plugin,
+                  enabled:
+                    true
+                }
+              : plugin
+        );
+
+
+      saveSettings({
+        ...settings,
+
+        catalogProviderId:
+          internalName,
+
+        cloudstreamRepo: {
+          ...repo,
+
+          plugins:
+            updatedPlugins
+        }
+      });
+    };
+
 
   const handleTogglePlugin =
     (
@@ -1504,16 +1839,48 @@ function App() {
       enabled:
         boolean
     ) => {
-      const updatedPlugins =
+
+      const repo =
+        settings
+          .cloudstreamRepo;
+
+
+      if (!repo) {
+        return;
+      }
+
+
+      const target =
+        repo.plugins.find(
+          plugin =>
+            plugin.internalName ===
+            internalName
+        );
+
+
+      if (!target) {
+        return;
+      }
+
+
+      /*
+       * Metadata-only providers cannot
+       * be enabled as catalog adapters.
+       */
+      if (
+        enabled &&
         (
-          (
-            settings as any
-          )
-            .cloudstreamRepo
-            ?.plugins ||
-          []
-        ).map(
-          (plugin: any) =>
+          !target.adapterAvailable ||
+          target.status === 0
+        )
+      ) {
+        return;
+      }
+
+
+      const updatedPlugins =
+        repo.plugins.map(
+          plugin =>
             plugin.internalName ===
             internalName
               ? {
@@ -1523,24 +1890,67 @@ function App() {
               : plugin
         );
 
-      const newSettings = {
+
+      let nextCatalogProviderId =
+        settings
+          .catalogProviderId;
+
+
+      /*
+       * If the active provider is
+       * disabled, fail over cleanly to
+       * another enabled adapter.
+       */
+      if (
+        !enabled &&
+        nextCatalogProviderId ===
+          internalName
+      ) {
+
+        nextCatalogProviderId =
+          updatedPlugins.find(
+            plugin =>
+              plugin.enabled &&
+              plugin.adapterAvailable &&
+              plugin.status !== 0
+          )?.internalName;
+      }
+
+
+      /*
+       * If there was no selected adapter
+       * and the user enables a valid one,
+       * make it active.
+       */
+      if (
+        enabled &&
+        !nextCatalogProviderId &&
+        target.adapterAvailable
+      ) {
+
+        nextCatalogProviderId =
+          internalName;
+      }
+
+
+      saveSettings({
         ...settings,
 
+        catalogProviderId:
+          nextCatalogProviderId,
+
         cloudstreamRepo: {
-          ...(
-            settings as any
-          ).cloudstreamRepo,
+          ...repo,
 
           plugins:
             updatedPlugins
         }
-      };
-
-      saveSettings(
-        newSettings
-      );
+      });
     };
 
+
+  /* =======================================================
+     THEMES
 
   /* =======================================================
      THEMES
@@ -1561,9 +1971,37 @@ function App() {
         themeKey ===
         'emerald'
       ) {
-        colors =
-          DEFAULT_APP_SETTINGS
-            .colors;
+        colors = {
+          bg:
+            '#06110d',
+
+          surface:
+            '#0a1913',
+
+          surfaceStrong:
+            '#10251b',
+
+          panel:
+            '#08150f',
+
+          text:
+            '#ecfdf5',
+
+          muted:
+            '#a7f3d0',
+
+          soft:
+            '#4f8f76',
+
+          accent:
+            '#2dd6a2',
+
+          accent2:
+            '#34d399',
+
+          accent3:
+            '#22c55e'
+        };
       }
 
       else if (
@@ -1646,34 +2084,34 @@ function App() {
       ) {
         colors = {
           bg:
-            '#080e14',
+            '#050505',
 
           surface:
-            '#0f172a',
+            '#0d0d0d',
 
           surfaceStrong:
-            '#1e293b',
+            '#171717',
 
           panel:
-            '#0c1322',
+            '#0a0a0a',
 
           text:
-            '#f8fafc',
+            '#f5f5f5',
 
           muted:
-            '#94a3b8',
+            '#a3a3a3',
 
           soft:
-            '#475569',
+            '#525252',
 
           accent:
-            '#38bdf8',
+            '#f5f5f5',
 
           accent2:
-            '#818cf8',
+            '#d4d4d4',
 
           accent3:
-            '#34d399'
+            '#737373'
         };
       }
 
@@ -1883,10 +2321,6 @@ function App() {
           handleSearchChange
         }
 
-        activeView={
-          activeView
-        }
-
         onViewChange={
           (
             view:
@@ -1912,25 +2346,6 @@ function App() {
             )
         }
 
-        onOpenRepoSync={
-          () => {}
-        }
-
-        onOpenResources={
-          () => {}
-        }
-
-        onOpenBilling={
-          () => {}
-        }
-
-        isSyncing={
-          isSyncing
-        }
-
-        onTriggerSync={
-          handleSyncRepository
-        }
       />
 
 
@@ -2318,6 +2733,14 @@ function App() {
           settings
         }
 
+        activeCatalogProvider={
+          activeProvider
+        }
+
+        onSelectCatalogProvider={
+          handleSelectCatalogProvider
+        }
+
         onSaveSettings={
           newSettings => {
             saveSettings(
@@ -2327,16 +2750,22 @@ function App() {
             setIsAdminModalOpen(
               false
             );
-
-            handleSyncRepository();
           }
         }
 
         onResetSettings={
           () => {
-            saveSettings(
-              DEFAULT_APP_SETTINGS
-            );
+            saveSettings({
+              ...DEFAULT_APP_SETTINGS,
+
+              catalogProviderId:
+                settings
+                  .catalogProviderId,
+
+              cloudstreamRepo:
+                settings
+                  .cloudstreamRepo
+            });
 
             setIsAdminModalOpen(
               false
@@ -2382,8 +2811,8 @@ function App() {
           settings
         }
 
-        onRefreshApi={
-          handleSyncRepository
+        onRefreshCatalog={
+          retryCatalogNow
         }
       />
 

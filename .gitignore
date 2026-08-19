@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Nebula uses npm only
+bun.lock
+bun.lockb

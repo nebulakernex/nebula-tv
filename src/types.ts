@@ -114,12 +114,12 @@ export interface CloudstreamPlugin {
 }
 
 export interface CloudstreamRepoState {
-  url: string;
-  name: string;
-  description: string;
-  author: string;
-  autoSync: boolean;
-  syncIntervalMinutes: number;
+  url?: string;
+  name?: string;
+  description?: string;
+  author?: string;
+  autoSync?: boolean;
+  syncIntervalMinutes?: number;
   lastSyncedAt: string | null;
   status: 'idle' | 'syncing' | 'synced' | 'error';
   errorMessage?: string;
@@ -139,12 +139,59 @@ export interface ThemeColors {
   accent3: string;
 }
 
+export interface ProviderHealthStatus {
+  provider: string;
+  upstream: string;
+
+  status:
+    | 'unknown'
+    | 'ok'
+    | 'degraded'
+    | 'unavailable';
+
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  servedStaleAt: string | null;
+
+  rateLimitLimit: number | null;
+  rateLimitRemaining: number | null;
+  rateLimitReset: number | null;
+
+  cooldownUntil: string | null;
+
+  cacheEntries: number;
+  inFlightRequests: number;
+  timeoutMs: number;
+}
+
+export interface InstalledProviderInfo {
+  id: string;
+  name: string;
+
+  catalogAvailable:
+    boolean;
+
+  playbackHostPolicyConfigured:
+    boolean;
+
+  health:
+    ProviderHealthStatus |
+    null;
+}
+
 export interface AppSettings {
   brandName: string;
+
+  /*
+   * Explicit user-selected catalog
+   * adapter.
+   */
+  catalogProviderId?:
+    string;
   plugins?: any[];
   billing?: any;
   providers?: any[];
-  cloudstreamRepo?: any;
+  cloudstreamRepo?: CloudstreamRepoState;
   logoUrl: string;
   colors: ThemeColors;
   platform: {

@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Settings,
   Search,
-  CreditCard,
   Layers,
   X
 } from 'lucide-react';
@@ -13,15 +12,9 @@ interface NavbarProps {
   playlist: ShowItem[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  activeView: string;
   onViewChange: (view: 'home' | 'player') => void;
-  onOpenRepoSync: () => void;
   onOpenAdmin: () => void;
-  onOpenResources: () => void;
   onOpenSources: () => void;
-  onOpenBilling: () => void;
-  isSyncing: boolean;
-  onTriggerSync: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -34,19 +27,50 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   onOpenAdmin,
 
-  onOpenSources,
-  onOpenBilling
+  onOpenSources
 }) => {
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [searchHistory, setSearchHistory] = React.useState<string[]>([]);
+  const [logoFailed, setLogoFailed] = React.useState(false);
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setLogoFailed(false);
+  }, [settings.logoUrl]);
 
   React.useEffect(() => {
     const history = localStorage.getItem('nebula_search_history');
     if (history) {
       try {
-        setSearchHistory(JSON.parse(history));
-      } catch (e) {}
+        const parsed =
+          JSON.parse(
+            history
+          );
+
+        if (
+          Array.isArray(
+            parsed
+          )
+        ) {
+          setSearchHistory(
+            parsed
+              .filter(
+                item =>
+                  typeof item ===
+                  'string'
+              )
+              .slice(
+                0,
+                10
+              )
+          );
+        }
+
+      } catch {
+        localStorage.removeItem(
+          'nebula_search_history'
+        );
+      }
     }
   }, []);
 
@@ -96,14 +120,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onViewChange('home')}
             className="flex items-center gap-3.5 text-left group focus:outline-none"
           >
-            {settings.logoUrl ? (
+            {settings.logoUrl && !logoFailed ? (
               <div className="h-8 md:h-10 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-105">
                 <img 
                   src={settings.logoUrl} 
                   alt={settings.brandName} 
                   className="h-full w-auto object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
+                  onError={() => {
+                    setLogoFailed(true);
                   }}
                 />
               </div>
@@ -249,17 +273,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Layers className="w-4 h-4" />
           </button>
 
-          {/* Billing Drawer */}
-          {(settings.cloudstreamRepo?.plugins?.[0] as any)?.enabled && (
-            <button
-              type="button"
-              onClick={onOpenBilling}
-              className="h-10 px-3.5 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <CreditCard className="w-3.5 h-3.5 text-[#7000FF]" />
-              <span>Plus</span>
-            </button>
-          )}
+          {/* Additional premium actions are hidden
+              until they have a real implementation. */}
         </div>
       </div>
     </header>

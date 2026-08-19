@@ -6,31 +6,73 @@ import type {
 
 
 export function getActiveCatalogProvider(
-  settings: AppSettings
+  settings:
+    AppSettings
 ): string | null {
+
   const plugins =
-    settings.cloudstreamRepo?.plugins;
+    settings
+      .cloudstreamRepo
+      ?.plugins;
 
-  if (!Array.isArray(plugins)) {
-    return null;
-  }
-
-  const activePlugin =
-    plugins.find(
-      (plugin: any) =>
-        plugin?.enabled &&
-        plugin?.adapterAvailable
-    );
 
   if (
-    !activePlugin ||
-    typeof activePlugin.internalName !==
-      'string'
+    !Array.isArray(
+      plugins
+    )
   ) {
     return null;
   }
 
-  return activePlugin.internalName;
+
+  const usablePlugins =
+    plugins.filter(
+      plugin =>
+        plugin.enabled &&
+        plugin.adapterAvailable &&
+        plugin.status !== 0
+    );
+
+
+  /*
+   * Prefer the explicit provider chosen
+   * by the user.
+   */
+  const preferred =
+    settings
+      .catalogProviderId
+      ?.trim();
+
+
+  if (preferred) {
+
+    const preferredPlugin =
+      usablePlugins.find(
+        plugin =>
+          plugin.internalName ===
+          preferred
+      );
+
+
+    if (
+      preferredPlugin
+    ) {
+      return preferredPlugin
+        .internalName;
+    }
+  }
+
+
+  /*
+   * Backward-compatible fallback for
+   * older saved settings that do not
+   * yet contain catalogProviderId.
+   */
+  return (
+    usablePlugins[0]
+      ?.internalName ||
+    null
+  );
 }
 
 
@@ -59,14 +101,17 @@ export function normalizeProviderShow(
    * Add Anime as a media-category tag
    * so Nebula's Anime navigation works.
    */
-  const isAnimeProvider =
+  const providerIdentity =
     String(
       source.providerId ??
       source.providerName ??
       existing?.providerId ??
       existing?.providerName ??
-      'Anichi'
-    ).toLowerCase() ===
+      ''
+    ).toLowerCase();
+
+  const isAnimeProvider =
+    providerIdentity ===
     'anichi';
 
   const tags =
@@ -202,14 +247,14 @@ export function normalizeProviderShow(
       String(
         source.providerId ??
         existing?.providerId ??
-        'Anichi'
+        'Unknown'
       ),
 
     providerName:
       String(
         source.providerName ??
         existing?.providerName ??
-        'Anichi'
+        'Unknown'
       ),
 
     /*

@@ -122,6 +122,13 @@ beforeAll(
     process.env.NODE_ENV =
       'test';
 
+    /*
+     * Stream proxy must remain
+     * fail-closed during tests.
+     */
+    process.env.STREAM_ALLOWED_HOSTS =
+      '';
+
 
     globalThis.fetch =
       async (
@@ -166,6 +173,51 @@ beforeAll(
           const query =
             requestBody.query ||
             '';
+
+
+          /*
+           * B4D controlled upstream failure.
+           *
+           * Unique search value prevents
+           * collision with normal cached
+           * provider tests.
+           */
+          if (
+            requestBody.variables
+              ?.search ===
+            'B4D_RATE_LIMIT_TEST'
+          ) {
+
+            return new Response(
+              JSON.stringify({
+                errors: [
+                  {
+                    message:
+                      'Rate limit test'
+                  }
+                ]
+              }),
+
+              {
+                status:
+                  429,
+
+                headers: {
+                  'Content-Type':
+                    'application/json',
+
+                  'Retry-After':
+                    '1',
+
+                  'X-RateLimit-Limit':
+                    '30',
+
+                  'X-RateLimit-Remaining':
+                    '0'
+                }
+              }
+            );
+          }
 
 
           if (
@@ -693,6 +745,236 @@ describe(
 
 
     it(
+      'rejects malformed pagination',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/home?page=1abc'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_PAGE'
+        );
+      }
+    );
+
+
+    it(
+      'requires a catalog id for details',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/details'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_ID'
+        );
+      }
+    );
+
+
+    it(
+      'does not resolve inherited provider properties',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/__proto__/home'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(404);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'ADAPTER_NOT_INSTALLED'
+        );
+      }
+    );
+
+
+    it(
+      'keeps stream proxy disabled without an allow-list',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/stream-check?url=' +
+            encodeURIComponent(
+              'https://example.com/video.m3u8'
+            )
+          );
+
+
+        expect(
+          response.status
+        ).toBe(403);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'STREAM_TARGET_FORBIDDEN'
+        );
+      }
+    );
+
+
+    it(
+      'returns JSON for malformed request bodies',
+      async () => {
+
+        const response =
+          await originalFetch(
+            baseUrl +
+            '/api/cloudstream/sync',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json'
+              },
+
+              body:
+                '{'
+            }
+          );
+
+
+        const body =
+          await response.json() as
+            Record<
+              string,
+              unknown
+            >;
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_JSON'
+        );
+
+
+        expect(
+          response.headers.get(
+            'x-content-type-options'
+          )
+        ).toBe(
+          'nosniff'
+        );
+      }
+    );
+
+
+    it(
+      'lists installed provider adapters',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(200);
+
+
+        const providers =
+          body.providers as
+            Array<
+              Record<
+                string,
+                unknown
+              >
+            >;
+
+
+        expect(
+          providers.some(
+            provider =>
+              provider.id ===
+              'Anichi'
+          )
+        ).toBe(
+          true
+        );
+
+
+        const anichi =
+          providers.find(
+            provider =>
+              provider.id ===
+              'Anichi'
+          );
+
+
+        expect(
+          anichi
+            ?.catalogAvailable
+        ).toBe(
+          true
+        );
+
+
+        expect(
+          anichi
+            ?.playbackHostPolicyConfigured
+        ).toBe(
+          false
+        );
+      }
+    );
+
+
+    it(
       'returns ADAPTER_NOT_INSTALLED for unknown provider',
       async () => {
         const {
@@ -742,6 +1024,169 @@ describe(
         );
       }
     );
+
+
+    it(
+      'rejects page zero',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/home?page=0'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_PAGE'
+        );
+      }
+    );
+
+
+    it(
+      'rejects pagination above the maximum',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/home?page=1001'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_PAGE'
+        );
+      }
+    );
+
+
+    it(
+      'rejects excessively long searches',
+      async () => {
+
+        const query =
+          'x'.repeat(
+            201
+          );
+
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/search?q=' +
+            encodeURIComponent(
+              query
+            )
+          );
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_SEARCH_QUERY'
+        );
+      }
+    );
+
+
+    it(
+      'rejects invalid provider identifiers',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/' +
+            encodeURIComponent(
+              'bad provider'
+            ) +
+            '/home'
+          );
+
+
+        expect(
+          response.status
+        ).toBe(400);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'INVALID_PROVIDER'
+        );
+      }
+    );
+
+
+    it(
+      'maps upstream AniList rate limiting to a controlled provider error',
+      async () => {
+
+        const {
+          response,
+          body
+        } =
+          await getJson(
+            '/api/providers/Anichi/search?q=' +
+            encodeURIComponent(
+              'B4D_RATE_LIMIT_TEST'
+            )
+          );
+
+
+        expect(
+          response.status
+        ).toBe(503);
+
+
+        expect(
+          body.code
+        ).toBe(
+          'UPSTREAM_RATE_LIMITED'
+        );
+
+
+        expect(
+          Number(
+            response.headers.get(
+              'retry-after'
+            )
+          )
+        ).toBeGreaterThanOrEqual(
+          1
+        );
+      }
+    );
+
 
   }
 );

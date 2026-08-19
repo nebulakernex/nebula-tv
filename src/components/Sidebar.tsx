@@ -24,8 +24,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeCategory,
   onSelectCategory,
   playlist,
+  settings,
   onChangeTheme
 }) => {
+  const accent =
+    settings.colors.accent.toLowerCase();
+
+  const activeTheme =
+    accent === '#ff7a59'
+      ? 'ember'
+      : accent === '#2dd6a2' ||
+          accent === '#34d399' ||
+          accent === '#22c55e'
+        ? 'emerald'
+        : accent === '#f5f5f5' ||
+            accent === '#ffffff'
+          ? 'obsidian'
+          : 'cyber';
+
+  const themeClass = (
+    key: string,
+    activeClass: string
+  ) =>
+    'px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 cursor-pointer transition-colors ' +
+    (
+      activeTheme === key
+        ? activeClass
+        : 'border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300'
+    );
+
   const getCategoryIcon = (cat: string) => {
     switch (cat.toLowerCase()) {
       case 'all': return <Film className="w-4 h-4" />;
@@ -131,16 +158,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Atmosphere
           </h2>
           <div className="grid grid-cols-2 gap-1.5">
-            <button type="button" onClick={() => onChangeTheme('cyber')} className="px-3 py-2 rounded-lg border border-[#7000FF]/40 bg-[#7000FF]/15 text-[10px] font-bold uppercase tracking-widest text-[#a855f7] flex items-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => onChangeTheme('cyber')}
+              className={themeClass(
+                'cyber',
+                'border-[#7000FF]/50 bg-[#7000FF]/15 text-[#c084fc]'
+              )}
+            >
               <div className="w-2 h-2 rounded-full bg-[#7000FF]" /><span>Violet</span>
             </button>
-            <button type="button" onClick={() => onChangeTheme('obsidian')} className="px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => onChangeTheme('obsidian')}
+              className={themeClass(
+                'obsidian',
+                'border-white/30 bg-white/10 text-white'
+              )}
+            >
               <div className="w-2 h-2 rounded-full bg-white" /><span>Mono</span>
             </button>
-            <button type="button" onClick={() => onChangeTheme('ember')} className="px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => onChangeTheme('ember')}
+              className={themeClass(
+                'ember',
+                'border-[#ff7a59]/50 bg-[#ff7a59]/15 text-[#ff9a7e]'
+              )}
+            >
               <div className="w-2 h-2 rounded-full bg-[#ff7a59]" /><span>Ember</span>
             </button>
-            <button type="button" onClick={() => onChangeTheme('emerald')} className="px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => onChangeTheme('emerald')}
+              className={themeClass(
+                'emerald',
+                'border-[#2dd6a2]/50 bg-[#2dd6a2]/15 text-[#6ee7b7]'
+              )}
+            >
               <div className="w-2 h-2 rounded-full bg-[#2dd6a2]" /><span>Emerald</span>
             </button>
           </div>

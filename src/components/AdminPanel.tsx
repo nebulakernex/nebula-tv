@@ -1,10 +1,26 @@
 import { useState, useEffect } from 'react';
-import { AppSettings } from '../types';
+import {
+  AppSettings,
+  CloudstreamPlugin,
+  InstalledProviderInfo,
+  RegistryStatus
+} from '../types';
+
+import {
+  fetchJson
+} from '../lib/api';
 
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
   settings: AppSettings;
+
+  activeCatalogProvider:
+    string | null;
+
+  onSelectCatalogProvider:
+    (providerId: string) => void;
+
   onSaveSettings: (settings: AppSettings) => void;
   onResetSettings: () => void;
   onSyncNow: () => void;
@@ -16,6 +32,8 @@ export default function AdminPanel({
   isOpen,
   onClose,
   settings,
+  activeCatalogProvider,
+  onSelectCatalogProvider,
   onSaveSettings,
   onResetSettings,
   onSyncNow,
@@ -24,15 +42,84 @@ export default function AdminPanel({
 }: AdminPanelProps) {
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [activeTab, setActiveTab] = useState<'general' | 'providers'>('general');
-  const [registryStatus, setRegistryStatus] = useState<any>(null);
+  const [registryStatus, setRegistryStatus] =
+    useState<RegistryStatus | null>(null);
+
+  const [registryError, setRegistryError] =
+    useState<string | null>(null);
+
+
+  const [
+    installedProviders,
+    setInstalledProviders
+  ] =
+    useState<
+      InstalledProviderInfo[]
+    >([]);
+
+
+  const [
+    installedProvidersError,
+    setInstalledProvidersError
+  ] =
+    useState<
+      string | null
+    >(null);
 
   useEffect(() => {
     if (isOpen) {
       setFormData(settings);
-      fetch('/api/cloudstream/status')
-        .then(res => res.json())
-        .then(data => setRegistryStatus(data))
-        .catch(() => {});
+      setRegistryError(
+        null
+      );
+
+      setInstalledProvidersError(
+        null
+      );
+
+
+      fetchJson<{
+        providers:
+          InstalledProviderInfo[];
+      }>(
+        '/api/providers'
+      )
+        .then(data => {
+
+          setInstalledProviders(
+            Array.isArray(
+              data.providers
+            )
+              ? data.providers
+              : []
+          );
+
+        })
+        .catch(error => {
+
+          setInstalledProvidersError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to read installed providers'
+          );
+        });
+
+
+      fetchJson<RegistryStatus>(
+        '/api/cloudstream/status'
+      )
+        .then(data => {
+          setRegistryStatus(
+            data
+          );
+        })
+        .catch(error => {
+          setRegistryError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to read registry status'
+          );
+        });
     }
   }, [isOpen, settings]);
 
@@ -67,7 +154,12 @@ export default function AdminPanel({
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'providers' ? 'border-[#7000FF] text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
           >
             CloudStream Registry
-            {(settings as any).cloudstreamRepo?.plugins?.some((p: any) => p.status === 1 && p.enabled && p.adapterAvailable) && (
+            {settings.cloudstreamRepo?.plugins?.some(
+              (plugin: CloudstreamPlugin) =>
+                plugin.status === 1 &&
+                plugin.enabled &&
+                plugin.adapterAvailable
+            ) && (
                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             )}
           </button>
@@ -111,14 +203,163 @@ export default function AdminPanel({
 
           {activeTab === 'providers' && (
             <div className="space-y-6">
-              
+
+              <div className="p-4 rounded-xl bg-black/30 border border-white/10">
+
+                <div className="flex flex-col gap-1 mb-4">
+
+                  <h3 className="text-base font-bold text-white">
+                    Installed Catalog Adapters
+                  </h3>
+
+                  <p className="text-xs text-zinc-400">
+                    Choose which installed server adapter supplies Nebula's active catalog.
+                  </p>
+
+                </div>
+
+
+                {installedProvidersError && (
+                  <div className="mb-3 text-xs text-amber-400">
+                    Installed providers unavailable: {installedProvidersError}
+                  </div>
+                )}
+
+
+                {installedProviders.length === 0 &&
+                !installedProvidersError ? (
+
+                  <div className="text-xs text-zinc-500">
+                    No server catalog adapters are installed.
+                  </div>
+
+                ) : (
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                    {installedProviders.map(
+                      provider => {
+
+                        const isActive =
+                          activeCatalogProvider ===
+                          provider.id;
+
+
+                        return (
+                          <div
+                            key={provider.id}
+                            className={
+                              'rounded-xl border p-4 ' +
+                              (
+                                isActive
+                                  ? 'border-[#7000FF]/60 bg-[#7000FF]/10'
+                                  : 'border-white/10 bg-black/30'
+                              )
+                            }
+                          >
+
+                            <div className="flex items-start justify-between gap-3">
+
+                              <div className="min-w-0">
+
+                                <div className="flex items-center gap-2">
+
+                                  <h4 className="font-bold text-sm text-white truncate">
+                                    {provider.name}
+                                  </h4>
+
+                                  {isActive && (
+                                    <span className="px-2 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 text-[9px] font-black uppercase tracking-wider text-emerald-400">
+                                      ACTIVE
+                                    </span>
+                                  )}
+
+                                </div>
+
+
+                                <div className="mt-1 text-[10px] font-mono text-zinc-500">
+                                  {provider.id}
+                                </div>
+
+
+                                <div className="mt-3 flex flex-wrap gap-2 text-[9px] font-bold uppercase tracking-wider">
+
+                                  <span className="px-2 py-1 rounded bg-emerald-400/10 text-emerald-400">
+                                    Catalog Adapter
+                                  </span>
+
+
+                                  <span
+                                    className={
+                                      'px-2 py-1 rounded ' +
+                                      (
+                                        provider.health?.status ===
+                                          'ok'
+                                          ? 'bg-emerald-400/10 text-emerald-400'
+                                          : provider.health?.status ===
+                                              'degraded'
+                                            ? 'bg-amber-400/10 text-amber-400'
+                                            : 'bg-white/5 text-zinc-500'
+                                      )
+                                    }
+                                  >
+                                    {provider.health?.status ||
+                                      'unknown'}
+                                  </span>
+
+
+                                  <span className="px-2 py-1 rounded bg-white/5 text-zinc-500">
+                                    {provider.playbackHostPolicyConfigured
+                                      ? 'Playback Policy Configured'
+                                      : 'Catalog Only'}
+                                  </span>
+
+                                </div>
+
+                              </div>
+
+
+                              <button
+                                type="button"
+                                disabled={isActive}
+                                onClick={() =>
+                                  onSelectCatalogProvider(
+                                    provider.id
+                                  )
+                                }
+                                className="shrink-0 px-3 py-2 rounded-lg bg-[#7000FF] hover:bg-[#8222FF] disabled:bg-white/5 disabled:text-zinc-500 text-white text-[10px] font-black uppercase tracking-wider transition-colors"
+                              >
+                                {isActive
+                                  ? 'Selected'
+                                  : 'Activate'}
+                              </button>
+
+                            </div>
+
+                          </div>
+                        );
+                      }
+                    )}
+
+                  </div>
+                )}
+
+              </div>
+
+
               <div className="p-4 rounded-xl bg-[#7000FF]/5 border border-[#7000FF]/20">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-base font-bold text-white mb-1">Hexated Extensions Registry</h3>
                     <p className="text-sm text-zinc-400 max-w-xl">
-                      Synchronizes metadata from the official Hexated repository. Note that extensions must have a valid Node.js adapter installed on the server to be playable.
+                      Synchronizes extension metadata. An extension must have a Nebula server adapter before its catalog can be used. Playback remains separate and is only enabled for explicitly supported sources.
                     </p>
+                    {registryError && (
+                      <div className="mt-3 text-xs text-amber-400">
+                        Registry status unavailable: {registryError}
+                      </div>
+                    )}
+
                     {registryStatus && (
                         <div className="mt-3 flex flex-wrap gap-4 text-xs">
                           <div className="flex flex-col">
@@ -152,7 +393,8 @@ export default function AdminPanel({
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white">Discovered Extensions</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {((settings as any).cloudstreamRepo?.plugins || []).map((plugin: any) => (
+                  {(settings.cloudstreamRepo?.plugins || []).map(
+                    (plugin: CloudstreamPlugin) => (
                      <div key={plugin.internalName} className={`p-4 rounded-xl border flex gap-4 transition-colors ${plugin.enabled ? 'bg-zinc-900 border-white/10' : 'bg-black border-white/5 opacity-75'}`}>
                         <div className="w-12 h-12 rounded-lg bg-black shrink-0 overflow-hidden border border-white/5 flex items-center justify-center relative">
                           {plugin.iconUrl ? (
@@ -169,7 +411,13 @@ export default function AdminPanel({
                            <p className="text-xs text-zinc-400 line-clamp-1 mb-2">{plugin.description}</p>
                            
                            <div className="flex items-center gap-3 text-[10px] font-mono">
-                              <span className="text-white/60">Metadata: <span className="text-green-400">Yes</span></span>
+                              <span className="text-white/60">
+                                Metadata:
+                                <span className={plugin.metadataAvailable ? "text-green-400" : "text-zinc-500"}>
+                                  {' '}
+                                  {plugin.metadataAvailable ? "Yes" : "No"}
+                                </span>
+                              </span>
                               <span className="text-white/20">•</span>
                               <span className="text-white/60">Adapter: <span className={plugin.adapterAvailable ? "text-green-400" : "text-red-400"}>{plugin.adapterAvailable ? "Installed" : "Not Installed"}</span></span>
                               <span className="text-white/20">•</span>
@@ -178,13 +426,19 @@ export default function AdminPanel({
                         </div>
                         <div className="shrink-0 flex items-center">
                            {plugin.status === 0 ? (
-                              <span className="text-xs text-red-400 font-bold px-2">Upstream Disabled</span>
+                              <span className="text-xs text-red-400 font-bold px-2">
+                                Upstream Disabled
+                              </span>
+                           ) : plugin.adapterAvailable !== true ? (
+                              <span className="text-xs text-zinc-500 font-bold px-2">
+                                No Adapter
+                              </span>
                            ) : (
                               <label className="relative inline-flex items-center cursor-pointer">
                                 <input
                                   type="checkbox"
                                   className="sr-only peer"
-                                  checked={plugin.enabled}
+                                  checked={plugin.enabled === true}
                                   onChange={(e) => onTogglePlugin(plugin.internalName, e.target.checked)}
                                 />
                                 <div className="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
