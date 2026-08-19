@@ -71,10 +71,10 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({
         {/* Enabled Providers List */}
         <div className="space-y-3">
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-            Enabled Provider Feeds ({settings.providers.filter(p => p.enabled).length})
+            Enabled Provider Feeds ({[].filter(p => p.enabled).length})
           </span>
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-            {settings.providers.filter(p => p.enabled).map(provider => (
+            {[].filter(p => p.enabled).map(provider => (
               <div key={provider.id} className="p-3.5 rounded-xl bg-[#050505] border border-white/10 space-y-1">
                 <div className="flex items-center justify-between text-xs font-bold text-zinc-200">
                   <span className="uppercase tracking-tight">{provider.name}</span>
@@ -101,3 +101,5 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({
     </div>
   );
 };
+
+export default SourceDrawer;

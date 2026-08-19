@@ -2,5 +2,5 @@
   "name": "Nebula Streams",
   "description": "Streaming video player, multi-provider manager, and CloudStream extension repository auto-sync.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

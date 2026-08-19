@@ -31,7 +31,7 @@ export interface EpisodeItem {
   duration?: string;
   thumbnail?: string;
   description?: string;
-  sourceUrl: string;
+  sourceUrl?: string;
   sources?: VideoSource[];
   subtitles?: SubtitleTrack[];
 }
@@ -69,9 +69,9 @@ export interface ShowItem {
   isUpcoming?: boolean;
   upcomingDate?: string;
   sourceLabel?: string;
-  sourceUrl: string;
-  sources: VideoSource[];
-  mimeType: string;
+  sourceUrl?: string;
+  sources?: VideoSource[];
+  mimeType?: string;
   poster: string;
   cover?: string;
   backdrop?: string;
@@ -83,65 +83,13 @@ export interface ShowItem {
   studio?: string;
   cast?: CastMember[];
   tags: string[];
-  subtitles: SubtitleTrack[];
+  subtitles?: SubtitleTrack[];
   episodes?: EpisodeItem[];
   seasons?: SeasonData[];
   epg?: EpgProgram[];
   player?: string;
   providerId?: string;
   providerName?: string;
-}
-
-export interface FieldMappings {
-  id: string;
-  title: string;
-  year: string;
-  type: string;
-  genre: string;
-  runtime: string;
-  region: string;
-  rating: string;
-  sourceLabel: string;
-  sourceUrl: string;
-  sources: string;
-  source1080: string;
-  source780: string;
-  source720: string;
-  source480: string;
-  quality: string;
-  mimeType: string;
-  poster: string;
-  cover: string;
-  backdrop: string;
-  logo: string;
-  summary: string;
-  tags: string;
-  episodes: string;
-  episodeTitle: string;
-  episodeNumber: string;
-  seasonNumber: string;
-  releaseDate: string;
-  isNew: string;
-  subtitleUrl: string;
-  subtitles: string;
-  epg: string;
-  player: string;
-  score: string;
-}
-
-export interface ProviderConfig {
-  id: string;
-  name: string;
-  enabled: boolean;
-  endpoint: string;
-  useProxy: boolean;
-  rootPath: string;
-  refreshMinutes: number;
-  headersJson: string;
-  mappings: Partial<FieldMappings>;
-  type?: 'generic' | 'cloudstream' | 'stremio' | 'hitv-cache';
-  repoUrl?: string;
-  pluginId?: string;
 }
 
 export interface CloudstreamPlugin {
@@ -151,19 +99,18 @@ export interface CloudstreamPlugin {
   description: string;
   authors: string[];
   iconUrl: string;
-  fileUrl?: string;
+  fileUrl: string;
   tvTypes: string[];
-  lang: string;
-
+  language: string;
+  apiVersion: number;
+  repositoryUrl: string;
+  fileSize: number;
   status: number;
-  runtime?: string;
-  adapterAvailable?: boolean;
-  playable?: boolean;
-
-  manifestVersion?: number;
-  sampleEndpoint?: string;
-  enabled?: boolean;
-  lastSynced?: string;
+  
+  metadataAvailable: boolean;
+  adapterAvailable: boolean;
+  playable: boolean;
+  enabled: boolean;
 }
 
 export interface CloudstreamRepoState {
@@ -185,7 +132,7 @@ export interface ThemeColors {
   surfaceStrong: string;
   panel: string;
   text: string;
-  muted: string;
+  muted: string;  
   soft: string;
   accent: string;
   accent2: string;
@@ -196,29 +143,10 @@ export interface AppSettings {
   brandName: string;
   logoUrl: string;
   colors: ThemeColors;
-  api: {
-    enabled: boolean;
-    endpoint: string;
-    useProxy: boolean;
-    rootPath: string;
-    refreshMinutes: number;
-    headersJson: string;
-    mappings: FieldMappings;
-    tmdbApiKey?: string;
-  };
-  providers: ProviderConfig[];
-  cloudstreamRepo: CloudstreamRepoState;
   platform: {
     tvMode: boolean;
     installPrompt: boolean;
     defaultTarget: 'web' | 'apk' | 'tv';
-  };
-  players: {
-    preferred: 'native' | 'tv' | 'vlc' | 'hitv';
-    nativeWeb: boolean;
-    nativeTv: boolean;
-    externalVlc: boolean;
-    bundledHitv: boolean;
   };
   playback: {
     autoplayNext: boolean;
@@ -227,24 +155,15 @@ export interface AppSettings {
     speeds: string;
     rememberSpeed: boolean;
   };
-  auth: {
-    enabled: boolean;
-    allowGuest: boolean;
-    requireRegistration: boolean;
-    title: string;
-    subtitle: string;
-  };
-  billing: {
-    enabled: boolean;
-    subscriptionsEnabled: boolean;
-    plans: {
-      oneMonth: boolean;
-      threeMonths: boolean;
-      oneYear: boolean;
-    };
-    planName: string;
-    priceLabel: string;
-    checkoutUrl: string;
-    note: string;
-  };
+}
+
+export interface RegistryStatus {
+  status: 'idle' | 'syncing' | 'ready' | 'error';
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  pluginsDiscovered: number;
+  activePlugins: number;
+  disabledPlugins: number;
+  adapterCount: number;
+  playableCount: number;
 }

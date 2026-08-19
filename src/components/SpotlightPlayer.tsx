@@ -34,7 +34,7 @@ interface SpotlightPlayerProps {
   onBack?: () => void;
 }
 
-export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
+const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
   item,
   playlist,
   nextItem,
@@ -45,6 +45,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
   onBack
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const savedTimeRef = useRef<number>(0);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   
   // Playback States
@@ -123,17 +124,11 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     if (item.seasons && item.seasons.length > 0) {
       return item.seasons;
     }
-    // Synthesize season 1 from episodes or totalEpisodes
-    const epCount = typeof item.totalEpisodes === 'number' ? item.totalEpisodes : parseInt(String(item.totalEpisodes || '8'), 10) || 8;
     const baseEpisodes: EpisodeItem[] = item.episodes && item.episodes.length > 0
       ? item.episodes
-      : Array.from({ length: epCount }, (_, i) => ({
-          id: `${item.id}-s1-ep-${i + 1}`,
-          number: i + 1,
-          title: `Episode ${i + 1}`,
-          duration: item.runtime || '45m',
-          sourceUrl: item.sourceUrl 
-        }));
+      : [];
+
+    if (baseEpisodes.length === 0) return [];
 
     return [
       {
@@ -163,23 +158,18 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     if (item.sources && item.sources.length > 0) {
       return item.sources;
     }
-    const base = currentEpisode?.sourceUrl || item.sourceUrl ;
-    return [
-      { quality: '1080P FHD', label: '1080P Ultra', url: base, mimeType: 'video/mp4' },
-      { quality: '720P HD', label: '720P Standard', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', mimeType: 'video/mp4' },
-      { quality: '480P Fast', label: '480P Fast', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', mimeType: 'video/mp4' }
-    ];
+    if (currentEpisode?.sourceUrl || item.sourceUrl) {
+      const base = currentEpisode?.sourceUrl || item.sourceUrl || '';
+      return [{ quality: 'Auto', label: 'Default', url: base, mimeType: item.mimeType }];
+    }
+    return [];
   }, [currentEpisode, item]);
 
-  const activeSource: VideoSource = playableSources[selectedQualityIndex] || playableSources[0];
+  const activeSource: VideoSource | undefined = playableSources[selectedQualityIndex] || playableSources[0];
+  const allSourcesFailed = playableSources.length > 0 && failedSources.size >= playableSources.length;
 
   // Subtitles
-  const subtitleTracks: SubtitleTrack[] = item.subtitles && item.subtitles.length > 0 
-    ? item.subtitles 
-    : [
-        { label: 'English CC', srclang: 'en', url: 'https://raw.githubusercontent.com/brenopolanski/html5-video-webvtt-example/master/subtitles/subtitles-en.vtt' },
-        { label: 'Indonesian CC', srclang: 'id', url: 'https://raw.githubusercontent.com/brenopolanski/html5-video-webvtt-example/master/subtitles/subtitles-en.vtt' }
-      ];
+  const subtitleTracks: SubtitleTrack[] = item.subtitles || [];
 
   // Speed options (0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x)
   const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
@@ -229,16 +219,16 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
 
     let hls: any = null;
     let dash: any = null;
-    let rawUrl = activeSource.url;
+    let rawUrl = activeSource?.url;
     
     if (!rawUrl) {
-       setPlaybackDiagnostic(prev => ({ ...prev, status: 'STREAM_OFFLINE', lastError: 'No stream URL provided' }));
+       setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'STREAM_OFFLINE', lastError: 'No stream URL provided' }));
        return;
     }
     
     let streamUrl = getPlaybackUrl(rawUrl);
     
-    setPlaybackDiagnostic(prev => ({
+    setPlaybackDiagnostic((prev: any) => ({
       ...prev,
       providerHost: rawUrl.startsWith('http') ? new URL(rawUrl).hostname : 'unknown',
       proxyEnabled: streamUrl !== rawUrl
@@ -252,20 +242,20 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
          playPromise.then(() => {
            setIsPlaying(true);
            setIsBuffering(false);
-           setPlaybackDiagnostic(prev => ({ ...prev, status: 'PLAYING' }));
+           setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'PLAYING' }));
          }).catch((e) => {
            setIsPlaying(false);
            if (e.name === 'NotAllowedError') {
-             setPlaybackDiagnostic(prev => ({ ...prev, status: 'WAITING_FOR_USER_PLAY', lastError: 'Autoplay blocked by browser' }));
+             setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'WAITING_FOR_USER_PLAY', lastError: 'Autoplay blocked by browser' }));
            } else {
-             setPlaybackDiagnostic(prev => ({ ...prev, status: 'NETWORK_ERROR', lastError: e.message }));
+             setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'NETWORK_ERROR', lastError: e.message }));
            }
          });
        }
     };
 
     if (rawUrl.includes('.m3u8')) {
-      setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'HLS.js' }));
+      setPlaybackDiagnostic((prev: any) => ({ ...prev, playerEngine: 'HLS.js' }));
       if (Hls.isSupported()) {
         hls = new Hls({
           xhrSetup: function (xhr, url) {
@@ -279,26 +269,39 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
         hls.on(Hls.Events.MANIFEST_PARSED, () => playVideo());
         hls.on(Hls.Events.ERROR, (event: any, data: any) => {
           if (data.fatal) {
-             setPlaybackDiagnostic(prev => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'HLS Error: ' + data.type }));
+             setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'HLS Error: ' + data.type }));
              handleAutoFastStreamSwitch();
           }
         });
       } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
-        setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'Native HLS' }));
+        setPlaybackDiagnostic((prev: any) => ({ ...prev, playerEngine: 'Native HLS' }));
         videoRef.current.src = streamUrl;
         playVideo();
       }
     } else if (rawUrl.includes('.mpd')) {
-      setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'DASH.js' }));
+      setPlaybackDiagnostic((prev: any) => ({ ...prev, playerEngine: 'DASH.js' }));
       dash = dashjs.MediaPlayer().create();
-      dash.initialize(videoRef.current, streamUrl, true);
+      
+      // Use Request Interceptor for DASH to handle proxying safely
+      dash.extend('RequestModifier', () => {
+        return {
+          modifyRequestURL: (url: string) => {
+             // Don't double-proxy if it's already going through proxy
+             if (url.includes('/api/stream-proxy')) return url;
+             return `/api/stream-proxy?url=${encodeURIComponent(url)}`;
+          }
+        };
+      });
+
+      dash.initialize(videoRef.current, rawUrl, true); // Important: Use rawUrl, let dash.js construct relative paths first
+      
       dash.on(dashjs.MediaPlayer.events.ERROR, (e: any) => {
-        setPlaybackDiagnostic(prev => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'DASH Error' }));
+        setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'DASH Error' }));
         handleAutoFastStreamSwitch();
       });
       playVideo();
     } else {
-      setPlaybackDiagnostic(prev => ({ ...prev, playerEngine: 'Native HTML5' }));
+      setPlaybackDiagnostic((prev: any) => ({ ...prev, playerEngine: 'Native HTML5' }));
       videoRef.current.src = streamUrl;
       videoRef.current.load();
       playVideo();
@@ -327,20 +330,35 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
   };
 
   // Automated Fast Stream Switching on Buffer/Error 
-  const handleAutoFastStreamSwitch = () => {
-    if (playableSources.length > 1) {
-      // Pick next fast source automatically
-      const nextIndex = (selectedQualityIndex + 1) % playableSources.length;
-      setSelectedQualityIndex(nextIndex);
-      if (videoRef.current) {
-        const savedTime = videoRef.current.currentTime;
-        videoRef.current.src = playableSources[nextIndex].url;
-        videoRef.current.currentTime = savedTime;
-        videoRef.current.play().catch(() => {});
+  
+
+
+  const handleAutoFastStreamSwitch = useCallback(() => {
+    if (playableSources.length > 0) {
+      setFailedSources((prev: Set<number>) => {
+        const next = new Set(prev);
+        next.add(selectedQualityIndex);
+        return next;
+      });
+      
+      const nextIndex = playableSources.findIndex((_: any, idx: number) => !failedSources.has(idx) && idx !== selectedQualityIndex);
+      
+      if (nextIndex !== -1) {
+         if (videoRef.current) {
+           savedTimeRef.current = videoRef.current.currentTime;
+         }
+         setSelectedQualityIndex(nextIndex);
       }
     }
     setIsBuffering(false);
-  };
+  }, [playableSources, selectedQualityIndex, failedSources]);
+
+  // Reset failed sources on item change
+  useEffect(() => {
+    setFailedSources(new Set<number>());
+    savedTimeRef.current = 0;
+  }, [item.id, activeEpisodeIndex, activeSeasonIndex]);
+
 
   // Toggle My List Bookmark
   const handleToggleBookmark = () => {
@@ -546,10 +564,10 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             className="relative rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl aspect-video select-none group flex items-center justify-center"
           >
             {/* Native HTML5 Video or Embed */}
-            {activeSource.mimeType === 'text/html' || activeSource.url.includes('vidsrc') ? (
+            {activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc') ? (
               <iframe
                 key={`${item.id}-${activeSeasonIndex}-${activeEpisodeIndex}-${selectedQualityIndex}`}
-                src={activeSource.url}
+                src={activeSource?.url}
                 className="w-full h-full border-0 absolute inset-0"
                 allowFullScreen
                 allow="autoplay; fullscreen"
@@ -633,7 +651,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* Centered Big Play button when paused */}
-            {!(activeSource.mimeType === 'text/html' || activeSource.url.includes('vidsrc')) && !isPlaying && !isBuffering && (
+            {!(activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc')) && !isPlaying && !isBuffering && (
               <div 
                 onClick={togglePlay}
                 className="absolute inset-0 bg-black/40 hover:bg-black/25 flex items-center justify-center cursor-pointer transition-colors z-10"
@@ -737,7 +755,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             )}
 
             {/* ================= FLOATING LOKLOK OVERLAY CONTROLS ================= */}
-            {!(activeSource.mimeType === 'text/html' || activeSource.url.includes('vidsrc')) && (
+            {!(activeSource?.mimeType === 'text/html' || activeSource?.url.includes('vidsrc')) && (
             <div 
               className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-3 sm:p-4 pt-12 space-y-2.5 transition-opacity duration-300 z-30 ${
                 showControls || !isPlaying ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -958,7 +976,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
                       }}
                       className="px-2 py-0.5 rounded font-bold text-xs bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-colors"
                     >
-                      {activeSource.quality || '1080P'}
+                      {activeSource?.quality || '1080P'}
                     </button>
 
                     {showQualityMenu && (
@@ -1236,7 +1254,7 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
             <div className="flex items-center justify-between pt-1">
               <span className="font-bold text-xs text-white">Episodes</span>
               <span className="text-[10px] text-zinc-400 font-medium">
-                {activeSeason.seasonTitle} • {currentEpisodeList.length} Ep
+                {activeSeason?.seasonTitle} • {currentEpisodeList.length} Ep
               </span>
             </div>
 
@@ -1333,3 +1351,5 @@ export const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     </div>
   );
 };
+
+export default SpotlightPlayer;

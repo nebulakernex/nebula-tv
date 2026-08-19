@@ -140,3 +140,5 @@ export const MovieGrid: React.FC<MovieGridProps> = ({
     </section>
   );
 };
+
+export default MovieGrid;

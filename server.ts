@@ -1,20 +1,19 @@
-
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import fs from 'fs';
+import { createServer as createViteServer } from 'vite';
 import { Readable } from 'stream';
 
 const currentDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(new URL(import.meta.url).href).replace(/^\/([A-Z]:)/, '$1');
-
 const app = express();
+
+app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS middleware
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Origin', '*'); // Same-origin in production, but Vite needs * in dev
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range');
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -22,36 +21,35 @@ app.use((req, res, next) => {
   next();
 });
 
-// App Settings
+// Basic Auth
+if (process.env.NEBULA_BASIC_USER && process.env.NEBULA_BASIC_PASSWORD) {
+  app.use((req, res, next) => {
+    if (req.path === '/api/health') return next();
+    
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const [user, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+    if (user === process.env.NEBULA_BASIC_USER && password === process.env.NEBULA_BASIC_PASSWORD) {
+      return next();
+    }
+
+    res.set('WWW-Authenticate', 'Basic realm="Nebula Streams"');
+    res.status(401).send('Authentication required.');
+  });
+}
+
+// App Settings (Read-Only via API)
 const SETTINGS_FILE = path.join(process.cwd(), 'app_settings.json');
-let appSettings = {
-  version: 1,
-  playback: {
-    autoplayNext: true,
-    defaultSpeed: 1,
-    proxyExternalStreams: true
-  },
-  providers: [],
-  diagnostics: {
-    enabled: true
-  }
-};
-
-try {
-  if (fs.existsSync(SETTINGS_FILE)) {
-    const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    appSettings = { ...appSettings, ...data };
-  }
-} catch(e) {}
-
-app.get('/api/settings', (req, res) => res.json(appSettings));
-app.post('/api/settings', (req, res) => {
+app.get('/api/settings', (req, res) => {
   try {
-    appSettings = { ...appSettings, ...req.body };
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(appSettings, null, 2));
-    res.json({ success: true });
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+      res.json(data);
+    } else {
+      res.json({});
+    }
   } catch (e) {
-    res.status(500).json({ error: 'Failed to save settings' });
+    res.status(500).json({ error: 'Failed to read settings' });
   }
 });
 
@@ -61,245 +59,334 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     service: 'Nebula Streams',
     build: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || 'unknown',
-    streamProxy: true,
-    hls: true,
-    dash: true
+    nodeVersion: process.version,
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-function isUrlAllowed(urlStr) {
+function isValidUrl(urlStr: string): boolean {
+  try {
+    new URL(urlStr);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function isSafeHost(urlStr: string, allowListConfig?: string): Promise<boolean> {
+  if (!isValidUrl(urlStr)) return false;
+  
   try {
     const parsed = new URL(urlStr);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-    const host = parsed.hostname;
+    
+    const host = parsed.hostname.toLowerCase();
+    
+    // Reject local/private IPs and names
     if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1') return false;
     if (host.startsWith('192.168.') || host.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || host.startsWith('169.254.')) return false;
+    if (host.includes('internal') || host.includes('local')) return false; // Basic safeguard, can be stricter
+
+    if (allowListConfig) {
+      const allowedHosts = allowListConfig.split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+      if (allowedHosts.length > 0) {
+        let isAllowed = false;
+        for (const allowed of allowedHosts) {
+          if (host === allowed || host.endsWith('.' + allowed)) {
+            isAllowed = true;
+            break;
+          }
+        }
+        if (!isAllowed) return false;
+      }
+    }
+    
     return true;
-  } catch(e) { return false; }
+  } catch(e) { 
+    return false; 
+  }
 }
 
+// Stream Proxy and Check
 app.get('/api/stream-check', async (req, res) => {
   const targetUrl = req.query.url as string;
-  if (!targetUrl || typeof targetUrl !== 'string' || !isUrlAllowed(targetUrl)) return res.status(400).json({ error: 'Invalid URL' });
+  if (!targetUrl || typeof targetUrl !== 'string' || !(await isSafeHost(targetUrl, process.env.STREAM_ALLOWED_HOSTS))) {
+    return res.status(403).json({ ok: false, error: 'Forbidden or Invalid URL' });
+  }
+
   try {
     const startTime = Date.now();
     let response = await fetch(targetUrl, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
-    if (!response.ok) response = await fetch(targetUrl, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0', 'Range': 'bytes=0-0' }, signal: AbortSignal.timeout(5000) });
+    if (!response.ok) {
+        response = await fetch(targetUrl, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0', 'Range': 'bytes=0-0' }, signal: AbortSignal.timeout(5000) });
+    }
     const contentType = response.headers.get('content-type') || 'unknown';
+    
     let streamType = 'unknown';
-    if (contentType.includes('mpegurl') || targetUrl.includes('.m3u8')) streamType = 'hls';
+    if (contentType.includes('mpegurl') || contentType.includes('x-mpegURL') || targetUrl.includes('.m3u8')) streamType = 'hls';
     else if (contentType.includes('dash+xml') || targetUrl.includes('.mpd')) streamType = 'dash';
-    else if (contentType.includes('mp4')) streamType = 'mp4';
+    else if (contentType.includes('mp4') || targetUrl.includes('.mp4')) streamType = 'mp4';
+    
     res.json({
-      ok: response.ok, status: response.status, contentType, streamType,
+      ok: response.ok, 
+      httpStatus: response.status, 
+      contentType, 
+      streamType,
       rangeSupported: response.headers.get('accept-ranges') === 'bytes' || response.status === 206,
-      finalHost: new URL(response.url).hostname, responseTimeMs: Date.now() - startTime
+      finalHost: new URL(response.url).hostname, 
+      responseTimeMs: Date.now() - startTime
     });
-  } catch (e: any) { res.json({ ok: false, error: e.message }); }
+  } catch (e: any) { 
+    res.json({ ok: false, error: e.message }); 
+  }
 });
 
 app.get('/api/stream-proxy', async (req, res) => {
   const targetUrl = req.query.url as string;
-  if (!targetUrl || typeof targetUrl !== 'string' || !isUrlAllowed(targetUrl)) return res.status(400).send('Invalid URL');
+  if (!targetUrl || typeof targetUrl !== 'string' || !(await isSafeHost(targetUrl, process.env.STREAM_ALLOWED_HOSTS))) {
+     return res.status(403).json({ error: 'Forbidden or Invalid URL' });
+  }
+
   const controller = new AbortController();
   req.on('close', () => controller.abort());
+
   try {
     const headers: any = {};
-    if (req.headers.origin) headers['Origin'] = req.headers.origin;
-    if (req.headers.referer) headers['Referer'] = req.headers.referer;
     if (req.headers.range) headers['Range'] = req.headers.range;
-    headers['User-Agent'] = 'Mozilla/5.0';
-    const response = await fetch(targetUrl, { headers, redirect: 'follow', signal: controller.signal });
+    headers['User-Agent'] = 'Mozilla/5.0'; // Add adapter specific headers here later
+    
+    const response = await fetch(targetUrl, { method: req.method === 'HEAD' ? 'HEAD' : 'GET', headers, redirect: 'manual', signal: controller.signal });
+    
+    // Redirect handling
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location');
+        if (location && await isSafeHost(location, process.env.STREAM_ALLOWED_HOSTS)) {
+             res.redirect(response.status, `/api/stream-proxy?url=${encodeURIComponent(location)}`);
+             return;
+        } else {
+             return res.status(403).json({ error: 'Forbidden Redirect' });
+        }
+    }
+
     res.status(response.status);
-    const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control', 'etag', 'last-modified'];
-    for (const header of headersToForward) if (response.headers.has(header)) res.setHeader(header, response.headers.get(header) as string);
+
     const contentType = response.headers.get('content-type') || '';
-    if (targetUrl.includes('.m3u8') || contentType.includes('mpegurl') || contentType.includes('x-mpegURL')) {
+    const isManifest = targetUrl.includes('.m3u8') || targetUrl.includes('.mpd') || contentType.includes('mpegurl') || contentType.includes('x-mpegURL') || contentType.includes('dash+xml');
+
+    const headersToForward = ['content-type', 'content-range', 'accept-ranges', 'cache-control', 'etag', 'last-modified'];
+    if (!isManifest) headersToForward.push('content-length');
+
+    for (const header of headersToForward) {
+        if (response.headers.has(header)) res.setHeader(header, response.headers.get(header) as string);
+    }
+    
+    if (req.method === 'HEAD') {
+        return res.end();
+    }
+
+    if (isManifest) {
+      if (!contentType) res.setHeader('Content-Type', targetUrl.includes('.m3u8') ? 'application/vnd.apple.mpegurl' : 'application/dash+xml');
       let text = await response.text();
       const baseUrl = new URL(response.url);
-      const rewritten = text.split('\n').map((line: string) => {
-        if (line.trim() === '') return line;
-        if (line.startsWith('#')) return line.replace(/URI="([^"]+)"/g, (match: string, uri: string) => {
-          try { return `URI="/api/stream-proxy?url=${encodeURIComponent(new URL(uri, baseUrl).href)}"`; } catch { return match; }
-        });
-        try { return `/api/stream-proxy?url=${encodeURIComponent(new URL(line.trim(), baseUrl).href)}`; } catch { return line; }
-      }).join('\n');
-      res.send(rewritten);
-    } else if (targetUrl.includes('.mpd') || contentType.includes('dash+xml')) {
-      res.send(await response.text());
-    } else {
-      if (response.body) Readable.fromWeb(response.body as any).pipe(res);
-      else res.end();
-    }
-  } catch (e: any) { if (e.name !== 'AbortError' && !res.headersSent) res.status(500).send('Proxy error'); }
-});
-
-app.get('/api/stremio/manifest', async (req, res) => {
-  const target = req.query.target as string;
-  if (!target || !/^https?:\/\//i.test(target)) {
-    return res.status(400).json({ error: 'Valid manifest URL required.' });
-  }
-
-  try {
-    const response = await fetch(target);
-    if (!response.ok) throw new Error(`Upstream returned ${response.status}`);
-    const manifest = await response.json();
-    res.json({
-      metadataOnly: true,
-      manifest: {
-        id: manifest.id || 'unknown',
-        name: manifest.name || 'Stremio Addon',
-        version: manifest.version || '1.0.0',
-        description: manifest.description || '',
-        types: manifest.types || [],
-        catalogs: (manifest.catalogs || []).map((c) => ({
-          id: c.id,
-          type: c.type,
-          name: c.name || c.id
-        }))
+      
+      if (contentType.includes('dash+xml') || targetUrl.includes('.mpd')) {
+          // DASH is handled client side by dash.js interceptor, just return it.
+          res.send(text);
+      } else {
+          // Rewrite HLS manifest
+          const rewritten = text.split('\n').map((line: string) => {
+            if (line.startsWith('#EXT-X-MEDIA:') || line.startsWith('#EXT-X-I-FRAME-STREAM-INF:')) {
+               return line.replace(/URI="([^"]+)"/g, (match: string, uri: string) => {
+                 try { return `URI="/api/stream-proxy?url=${encodeURIComponent(new URL(uri, baseUrl).href)}"`; } catch { return match; }
+               });
+            }
+            if (line.startsWith('#EXT-X-KEY:') || line.startsWith('#EXT-X-MAP:')) {
+                return line.replace(/URI="([^"]+)"/g, (match: string, uri: string) => {
+                  try { return `URI="/api/stream-proxy?url=${encodeURIComponent(new URL(uri, baseUrl).href)}"`; } catch { return match; }
+                });
+            }
+            if (line.trim() && !line.startsWith('#')) {
+              try { return `/api/stream-proxy?url=${encodeURIComponent(new URL(line.trim(), baseUrl).href)}`; } catch { return line; }
+            }
+            return line;
+          }).join('\n');
+          res.send(rewritten);
       }
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    } else {
+      if (response.body) {
+        Readable.fromWeb(response.body as any).pipe(res);
+      } else {
+        res.end();
+      }
+    }
+  } catch (e: any) { 
+      if (e.name !== 'AbortError' && !res.headersSent) res.status(500).json({ error: 'Proxy error', details: e.message }); 
   }
 });
 
 
-app.get('/api/stremio/catalog', async (req, res) => {
-  const manifestUrl = req.query.manifest as string;
-  if (!manifestUrl || !/^https?:\/\//i.test(manifestUrl)) {
-    return res.status(400).json({ error: 'Valid manifest URL required.' });
-  }
+// CloudStream Registry State
+const CLOUDSTREAM_MANIFEST_URL = 'https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds/plugins.json';
 
-  try {
-    const manifestRes = await fetch(manifestUrl);
-    const manifest = await manifestRes.json();
-    const type = req.query.type || manifest.catalogs?.[0]?.type || 'series';
-    const catalogId = req.query.catalog || manifest.catalogs?.[0]?.id || 'top';
-
-    const baseUrl = manifestUrl.replace(/\/manifest\.json$/i, '');
-    const catalogUrl = `${baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`;
-
-    const catRes = await fetch(catalogUrl);
-    const catData = await catRes.json();
-    const metas = Array.isArray(catData.metas) ? catData.metas : [];
-
-    const shows = metas.map((meta, idx) => ({
-      id: `stremio-${manifest.id || 'addon'}-${meta.id || idx}`,
-      title: meta.name || meta.title || `Catalog Item ${idx + 1}`,
-      year: meta.releaseInfo || meta.year || '2024',
-      type: meta.type || type,
-      genre: meta.genres?.[0] || 'Drama',
-      runtime: meta.runtime || '45m',
-      region: 'International',
-      rating: meta.imdbRating ? `IMDb ${meta.imdbRating}` : 'TV-14',
-      score: meta.imdbRating ? String(meta.imdbRating) : '8.5',
-      sourceLabel: `${manifest.name || 'Stremio'} Catalog`,
-      sourceUrl: "",
-      sources: [
-        { quality: '1080p', label: '1080p Stream', url: "", mimeType: 'video/mp4' }
-      ],
-      mimeType: 'video/mp4',
-      poster: meta.poster || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
-      cover: meta.poster || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
-      backdrop: meta.background || meta.poster || 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1600&auto=format&fit=crop&q=80',
-      summary: meta.description || 'Metadata imported from Stremio catalog feed.',
-      tags: meta.genres || ['Catalog', 'Stremio'],
-      subtitles: [],
-      epg: []
-    }));
-
-    res.json({
-      name: `${manifest.name || 'Stremio'} Shows`,
-      shows
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Hexated CloudStream Repository Parsing & Syncing Endpoints
-
-
-interface CloudstreamProviderAdapter {
-  id: string;
-  name: string;
-  getHome(): Promise<any[]>;
-  search(query: string): Promise<any[]>;
-  getDetails(id: string): Promise<any>;
-  getEpisodes(id: string): Promise<any[]>;
-  resolveSources(episodeId: string): Promise<any[]>;
+interface CloudstreamPluginDTO {
+    name: string;
+    internalName: string;
+    version: number;
+    description: string;
+    authors: string[];
+    iconUrl: string;
+    fileUrl: string;
+    tvTypes: string[];
+    language: string;
+    apiVersion: number;
+    repositoryUrl: string;
+    fileSize: number;
+    status: number;
+    metadataAvailable: boolean;
+    adapterAvailable: boolean;
+    playable: boolean;
+    enabled: boolean;
 }
 
-const adapters: Record<string, CloudstreamProviderAdapter> = {};
-let cachedPlugins: any[] = [];
+interface RegistryStatus {
+    status: 'idle' | 'syncing' | 'ready' | 'error';
+    lastSyncedAt: string | null;
+    lastError: string | null;
+    pluginsDiscovered: number;
+    activePlugins: number;
+    disabledPlugins: number;
+    adapterCount: number;
+    playableCount: number;
+}
 
+const adapters: Record<string, any> = {}; // Fake adapter registry for now
+
+let registryState: RegistryStatus = {
+    status: 'idle',
+    lastSyncedAt: null,
+    lastError: null,
+    pluginsDiscovered: 0,
+    activePlugins: 0,
+    disabledPlugins: 0,
+    adapterCount: 0,
+    playableCount: 0
+};
+
+let cachedPlugins: CloudstreamPluginDTO[] = [];
+let isSyncing = false;
 
 async function syncCloudstreamRegistry() {
-  try {
-    const response = await fetch('https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds/plugins.json');
-    if (!response.ok) throw new Error('Fetch failed');
-    const plugins = await response.json();
-    cachedPlugins = plugins.map((p) => ({
-      ...p,
-      enabled: p.status === 1,
-      runtime: 'cloudstream',
-      adapterAvailable: !!adapters[p.internalName],
-      playable: false
-    }));
-    return {
-      ok: true, source: 'hexated', manifest: 'plugins.json',
-      pluginsDiscovered: plugins.length, active: plugins.filter((p) => p.status === 1).length,
-      disabled: plugins.filter((p) => p.status === 0).length, syncedAt: new Date().toISOString()
-    };
-  } catch (e) {
-    console.error('Registry sync failed:', e.message);
-    throw e;
-  }
+    if (isSyncing) return;
+    isSyncing = true;
+    registryState.status = 'syncing';
+    registryState.lastError = null;
+
+    try {
+        const response = await fetch(CLOUDSTREAM_MANIFEST_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        
+        if (!Array.isArray(data)) throw new Error('Invalid manifest format');
+
+        const validPlugins: CloudstreamPluginDTO[] = [];
+        
+        for (const p of data) {
+            if (!p || typeof p !== 'object' || !p.internalName) continue;
+            
+            const internalName = p.internalName;
+            const hasAdapter = !!adapters[internalName];
+
+            validPlugins.push({
+                name: String(p.name || internalName),
+                internalName: internalName,
+                version: Number(p.version) || 1,
+                description: String(p.description || ''),
+                authors: Array.isArray(p.authors) ? p.authors.map(String) : [],
+                iconUrl: String(p.iconUrl || '').replace('%size%', '64'),
+                fileUrl: String(p.url || ''),
+                tvTypes: Array.isArray(p.tvTypes) ? p.tvTypes.map(String) : [],
+                language: String(p.language || 'und'),
+                apiVersion: Number(p.apiVersion) || 1,
+                repositoryUrl: String(p.repositoryUrl || ''),
+                fileSize: Number(p.fileSize) || 0,
+                status: Number(p.status) || 0,
+                metadataAvailable: true,
+                adapterAvailable: hasAdapter,
+                playable: false, // Wait for real adapter health
+                enabled: Number(p.status) === 1
+            });
+        }
+
+        cachedPlugins = validPlugins;
+        registryState = {
+            status: 'ready',
+            lastSyncedAt: new Date().toISOString(),
+            lastError: null,
+            pluginsDiscovered: validPlugins.length,
+            activePlugins: validPlugins.filter(p => p.status === 1).length,
+            disabledPlugins: validPlugins.filter(p => p.status === 0).length,
+            adapterCount: Object.keys(adapters).length,
+            playableCount: validPlugins.filter(p => p.playable).length
+        };
+
+    } catch (error: any) {
+        registryState.status = 'error';
+        registryState.lastError = error.message;
+        console.error('CloudStream Registry Sync Error:', error);
+    } finally {
+        isSyncing = false;
+    }
 }
 
 app.post('/api/cloudstream/sync', async (req, res) => {
-  try {
-    const result = await syncCloudstreamRegistry();
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+    await syncCloudstreamRegistry();
+    res.json(registryState);
 });
 
-app.get('/api/cloudstream/providers', (req, res) => res.json({ providers: cachedPlugins }));
+app.get('/api/cloudstream/status', (req, res) => {
+    res.json(registryState);
+});
 
+app.get('/api/cloudstream/providers', (req, res) => {
+    res.json({ providers: cachedPlugins });
+});
+
+
+// Provider Routes
 app.get('/api/providers/:provider/home', async (req, res) => {
   const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ error: 'Adapter not installed', status: 'ADAPTER_AVAILABLE: false' });
-  try { res.json(await adapter.getHome()); } catch(e: any) { res.status(500).json({ error: e.message }); }
+  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
+  try { res.json({ ok: true, provider: req.params.provider, shows: await adapter.getHome() }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 app.get('/api/providers/:provider/search', async (req, res) => {
   const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ error: 'Adapter not installed' });
-  try { res.json(await adapter.search((req.query.q as string) || '')); } catch(e: any) { res.status(500).json({ error: e.message }); }
+  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
+  try { res.json({ ok: true, provider: req.params.provider, query: req.query.q, shows: await adapter.search((req.query.q as string) || '') }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
 });
-
 
 app.get('/api/providers/:provider/details', async (req, res) => {
   const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ error: 'Adapter not installed' });
-  try { res.json(await adapter.getDetails(req.query.id as string)); } catch(e: any) { res.status(500).json({ error: e.message }); }
+  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
+  try { res.json({ ok: true, provider: req.params.provider, item: await adapter.getDetails(req.query.id as string) }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 app.get('/api/providers/:provider/episodes', async (req, res) => {
   const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ error: 'Adapter not installed' });
-  try { res.json(await adapter.getEpisodes(req.query.id as string)); } catch(e: any) { res.status(500).json({ error: e.message }); }
+  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
+  try { res.json({ ok: true, provider: req.params.provider, episodes: await adapter.getEpisodes(req.query.id as string) }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 app.get('/api/providers/:provider/sources', async (req, res) => {
   const adapter = adapters[req.params.provider];
-  if (!adapter) return res.status(404).json({ error: 'Adapter not installed' });
-  try { res.json(await adapter.resolveSources(req.query.id as string)); } catch(e: any) { res.status(500).json({ error: e.message }); }
+  if (!adapter) return res.status(404).json({ ok: false, code: 'ADAPTER_NOT_INSTALLED', provider: req.params.provider, message: 'Adapter not installed' });
+  try { res.json({ ok: true, provider: req.params.provider, sources: await adapter.resolveSources(req.query.id as string) }); } catch(e: any) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// JSON 404 Handler for API routes
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ ok: false, error: 'API_ROUTE_NOT_FOUND' });
+});
 
 async function startServer() {
   const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -311,7 +398,19 @@ async function startServer() {
     app.use(express.static(distPath));
     app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
-  app.listen(PORT, '0.0.0.0', () => console.log(`Running on port ${PORT}`));
+
+  app.listen(PORT, '0.0.0.0', () => {
+     console.log(`Running on port ${PORT}`);
+     
+     // Perform startup sync
+     syncCloudstreamRegistry();
+     
+     // Setup interval
+     const intervalMinutes = parseInt(process.env.HEXATED_SYNC_INTERVAL_MINUTES || '15', 10);
+     if (intervalMinutes > 0) {
+         setInterval(syncCloudstreamRegistry, intervalMinutes * 60 * 1000);
+     }
+  });
 }
-syncCloudstreamRegistry().catch(console.error);
+
 startServer();

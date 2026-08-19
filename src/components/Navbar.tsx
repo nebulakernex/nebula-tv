@@ -20,7 +20,7 @@ interface NavbarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   activeView: string;
-  onViewChange: (view: string) => void;
+  onViewChange: (view: 'home' | 'player') => void;
   onOpenRepoSync: () => void;
   onOpenAdmin: () => void;
   onOpenResources: () => void;
@@ -258,7 +258,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Billing Drawer */}
-          {settings.billing.enabled && (
+          {(settings.plugins?.[0] as any)?.enabled && (
             <button
               type="button"
               onClick={onOpenBilling}
@@ -273,3 +273,5 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
+export default Navbar;

@@ -18,7 +18,7 @@ interface SidebarProps {
   playlist: ShowItem[];
   settings: AppSettings;
   onChangeTheme: (themeKey: 'emerald' | 'ember' | 'cyber' | 'obsidian') => void;
-  onOpenRepoSync?: () => void;
+  
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -54,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {categories.map((category) => {
               const count = category === 'All' 
                 ? playlist.length 
-                : playlist.filter(item => (item.genre || item.category || '').toLowerCase() === category.toLowerCase()).length;
+                : playlist.filter(item => (item.genre || item.genre || '').toLowerCase() === category.toLowerCase()).length;
               const isActive = activeCategory.toLowerCase() === category.toLowerCase();
 
               return (
@@ -138,3 +138,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
+
+export default Sidebar;
