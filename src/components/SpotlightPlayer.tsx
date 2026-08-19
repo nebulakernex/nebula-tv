@@ -1,22 +1,19 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { 
-  Play, 
-  Pause, 
-  Volume2, 
-  VolumeX, 
-  Maximize, 
-  Minimize, 
-  SkipForward, 
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Minimize,
+  SkipForward,
   Star,
   Settings,
   Check,
   ChevronDown,
   ChevronUp,
   Sliders,
-  Type,
-  User,
-  Sparkles,
-  Layers
+  Type
 } from 'lucide-react';
 import Hls from 'hls.js';
 import * as dashjs from 'dashjs';
@@ -51,8 +48,9 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
   // Playback States
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [failedSources, setFailedSources] = useState<Set<number>>(() => new Set<number>());
   
-  const [playbackDiagnostic, setPlaybackDiagnostic] = useState<any>({
+  const [, setPlaybackDiagnostic] = useState<any>({
     status: 'READY',
     proxyEnabled: false,
     playerEngine: 'Native',
@@ -61,7 +59,7 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
     responseTime: 0,
     httpStatus: 0
   });
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
+
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -166,7 +164,6 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
   }, [currentEpisode, item]);
 
   const activeSource: VideoSource | undefined = playableSources[selectedQualityIndex] || playableSources[0];
-  const allSourcesFailed = playableSources.length > 0 && failedSources.size >= playableSources.length;
 
   // Subtitles
   const subtitleTracks: SubtitleTrack[] = item.subtitles || [];
@@ -267,7 +264,7 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
         hls.loadSource(streamUrl);
         hls.attachMedia(videoRef.current);
         hls.on(Hls.Events.MANIFEST_PARSED, () => playVideo());
-        hls.on(Hls.Events.ERROR, (event: any, data: any) => {
+        hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
           if (data.fatal) {
              setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'HLS Error: ' + data.type }));
              handleAutoFastStreamSwitch();
@@ -295,7 +292,7 @@ const SpotlightPlayer: React.FC<SpotlightPlayerProps> = ({
 
       dash.initialize(videoRef.current, rawUrl, true); // Important: Use rawUrl, let dash.js construct relative paths first
       
-      dash.on(dashjs.MediaPlayer.events.ERROR, (e: any) => {
+      dash.on(dashjs.MediaPlayer.events.ERROR, (_error: any) => {
         setPlaybackDiagnostic((prev: any) => ({ ...prev, status: 'NETWORK_ERROR', lastError: 'DASH Error' }));
         handleAutoFastStreamSwitch();
       });

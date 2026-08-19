@@ -1,13 +1,7 @@
 import React from 'react';
-import { 
-  Tv, 
-  Settings, 
-  FolderDown, 
-  Radio, 
-  Search, 
-  Sparkles, 
-  RefreshCw, 
-  Download, 
+import {
+  Settings,
+  Search,
   CreditCard,
   Layers,
   X
@@ -35,15 +29,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   playlist,
   searchQuery,
   onSearchChange,
-  activeView,
+
   onViewChange,
-  onOpenRepoSync,
+
   onOpenAdmin,
-  onOpenResources,
+
   onOpenSources,
-  onOpenBilling,
-  isSyncing,
-  onTriggerSync
+  onOpenBilling
 }) => {
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [searchHistory, setSearchHistory] = React.useState<string[]>([]);

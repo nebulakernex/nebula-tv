@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import MovieGrid from './components/MovieGrid';
@@ -19,7 +19,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeView, setActiveView] = useState<'home' | 'player'>('home');
-  const [activeId, setActiveId] = useState<string>((playlist[0] as ShowItem)?.id || '');
+  const [activeId, setActiveId] = useState<string>(playlist[0]?.id ?? '');
   
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isSourceDrawerOpen, setIsSourceDrawerOpen] = useState(false);
@@ -147,7 +147,9 @@ function App() {
     saveSettings(newSettings);
   };
 
-  const handleChangeTheme = (themeKey: string) => {
+  const handleChangeTheme = (
+    themeKey: 'emerald' | 'ember' | 'cyber' | 'obsidian'
+  ) => {
     let colors = settings.colors;
     if (themeKey === 'emerald') colors = DEFAULT_APP_SETTINGS.colors;
     else if (themeKey === 'ember') {
@@ -183,10 +185,15 @@ function App() {
     return matchesCategory && matchesSearch;
   });
 
-  const activeShow = playlist.find(item => item.id === activeId) || playlist[0];
+  const activeShow: ShowItem | undefined =
+    playlist.find(item => item.id === activeId) ?? playlist[0];
   const activeIndex = playlist.findIndex(item => item.id === activeId);
-  const prevShow = activeIndex > 0 ? playlist[activeIndex - 1] : null;
-  const nextShow = activeIndex >= 0 && activeIndex < playlist.length - 1 ? playlist[activeIndex + 1] : null;
+  const prevShow: ShowItem | null =
+    activeIndex > 0 ? playlist[activeIndex - 1] ?? null : null;
+  const nextShow: ShowItem | null =
+    activeIndex >= 0 && activeIndex < playlist.length - 1
+      ? playlist[activeIndex + 1] ?? null
+      : null;
 
   if (!isSettingsLoaded) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading configuration...</div>;
 

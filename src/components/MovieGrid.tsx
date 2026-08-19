@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Sparkles, Star, Tag, Tv } from 'lucide-react';
+import { Play, Tv } from 'lucide-react';
 import { ShowItem } from '../types';
 
 interface MovieGridProps {

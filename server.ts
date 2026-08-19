@@ -22,9 +22,7 @@ app.use((req, res, next) => {
 });
 
 // Basic Auth
-if (
-  process.env.NODE_ENV !== 'test' &&
-  process.env.NEBULA_BASIC_USER &&
+if (process.env.NEBULA_BASIC_USER && process.env.NODE_ENV !== 'test' &&
   process.env.NEBULA_BASIC_PASSWORD
 ) {
   app.use((req, res, next) => {
@@ -44,7 +42,7 @@ if (
 
 // App Settings (Read-Only via API)
 const SETTINGS_FILE = path.join(process.cwd(), 'app_settings.json');
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', (_req, res) => {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
@@ -58,7 +56,7 @@ app.get('/api/settings', (req, res) => {
 });
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'Nebula Streams',
@@ -340,16 +338,16 @@ async function syncCloudstreamRegistry() {
     }
 }
 
-app.post('/api/cloudstream/sync', async (req, res) => {
+app.post('/api/cloudstream/sync', async (_req, res) => {
     await syncCloudstreamRegistry();
     res.json(registryState);
 });
 
-app.get('/api/cloudstream/status', (req, res) => {
+app.get('/api/cloudstream/status', (_req, res) => {
     res.json(registryState);
 });
 
-app.get('/api/cloudstream/providers', (req, res) => {
+app.get('/api/cloudstream/providers', (_req, res) => {
     res.json({ providers: cachedPlugins });
 });
 
@@ -386,19 +384,19 @@ app.get('/api/providers/:provider/sources', async (req, res) => {
 });
 
 // JSON 404 Handler for API routes
-app.use('/api/*', (req, res) => {
+app.use('/api/*', (_req, res) => {
     res.status(404).json({ ok: false, error: 'API_ROUTE_NOT_FOUND' });
 });
 
 async function startServer() {
   const PORT = parseInt(process.env.PORT || '3000', 10);
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
   app.listen(PORT, '0.0.0.0', () => {

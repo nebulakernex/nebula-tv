@@ -1,89 +1,281 @@
-import { describe, expect, it } from 'vitest';
-import request from 'supertest';
-import { app } from '../../server.ts';
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  it
+} from 'vitest';
 
-describe('Provider 1 - Anichi scaffold', () => {
-  it('returns an empty home catalog', async () => {
-    const response = await request(app)
-      .get('/api/providers/Anichi/home')
-      .expect(200);
+import type { Server } from 'node:http';
+import type { Express } from 'express';
 
-    expect(response.headers['content-type']).toContain('application/json');
+let server: Server | undefined;
+let app: Express;
+let baseUrl = '';
 
-    expect(response.body).toEqual({
-      ok: true,
-      provider: 'Anichi',
-      shows: []
-    });
+beforeAll(async () => {
+  /*
+   * IMPORTANT:
+   * Set test environment BEFORE importing server.ts.
+   * This prevents:
+   * - automatic app.listen()
+   * - Basic Auth during tests
+   * - port collisions on 3000 / 8080
+   */
+  process.env.NODE_ENV = 'test';
+
+  const serverModule = await import('../../server.ts');
+
+  app = serverModule.app;
+
+  await new Promise<void>((resolve, reject) => {
+    const listener = app.listen(
+      0,
+      '127.0.0.1',
+      () => {
+        server = listener;
+        resolve();
+      }
+    );
+
+    listener.on('error', reject);
   });
 
-  it('returns an empty search result', async () => {
-    const response = await request(app)
-      .get('/api/providers/Anichi/search')
-      .query({ q: 'test' })
-      .expect(200);
+  const address = server?.address();
 
-    expect(response.body.ok).toBe(true);
-    expect(response.body.provider).toBe('Anichi');
-    expect(response.body.query).toBe('test');
-    expect(response.body.shows).toEqual([]);
-  });
+  if (!address || typeof address === 'string') {
+    throw new Error(
+      'Unable to determine test server port'
+    );
+  }
 
-  it('returns null details while catalog is not connected', async () => {
-    const response = await request(app)
-      .get('/api/providers/Anichi/details')
-      .query({ id: 'test' })
-      .expect(200);
-
-    expect(response.body).toEqual({
-      ok: true,
-      provider: 'Anichi',
-      item: null
-    });
-  });
-
-  it('returns no episodes yet', async () => {
-    const response = await request(app)
-      .get('/api/providers/Anichi/episodes')
-      .query({ id: 'test' })
-      .expect(200);
-
-    expect(response.body).toEqual({
-      ok: true,
-      provider: 'Anichi',
-      episodes: []
-    });
-  });
-
-  it('returns no playable sources yet', async () => {
-    const response = await request(app)
-      .get('/api/providers/Anichi/sources')
-      .query({ id: 'test' })
-      .expect(200);
-
-    expect(response.body).toEqual({
-      ok: true,
-      provider: 'Anichi',
-      sources: []
-    });
-  });
-
-  it('returns ADAPTER_NOT_INSTALLED for an unknown provider', async () => {
-    const response = await request(app)
-      .get('/api/providers/UnknownProvider/home')
-      .expect(404);
-
-    expect(response.body.ok).toBe(false);
-    expect(response.body.code).toBe('ADAPTER_NOT_INSTALLED');
-  });
-
-  it('returns JSON for an unknown API route', async () => {
-    const response = await request(app)
-      .get('/api/this-route-does-not-exist')
-      .expect(404);
-
-    expect(response.headers['content-type']).toContain('application/json');
-    expect(response.body.ok).toBe(false);
-    expect(response.body.error).toBe('API_ROUTE_NOT_FOUND');
-  });
+  baseUrl =
+    `http://127.0.0.1:${address.port}`;
 });
+
+afterAll(async () => {
+  if (!server) {
+    return;
+  }
+
+  await new Promise<void>(
+    (resolve, reject) => {
+      server!.close(error => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    }
+  );
+});
+
+async function getJson(path: string) {
+  const response = await fetch(
+    `${baseUrl}${path}`
+  );
+
+  const body =
+    await response.json() as Record<
+      string,
+      unknown
+    >;
+
+  return {
+    response,
+    body
+  };
+}
+
+describe(
+  'Provider 1 - Anichi scaffold',
+  () => {
+    it(
+      'returns an empty home catalog',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/providers/Anichi/home'
+        );
+
+        expect(
+          response.status
+        ).toBe(200);
+
+        expect(
+          response.headers.get(
+            'content-type'
+          )
+        ).toContain(
+          'application/json'
+        );
+
+        expect(body).toEqual({
+          ok: true,
+          provider: 'Anichi',
+          shows: []
+        });
+      }
+    );
+
+    it(
+      'returns an empty search result',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/providers/Anichi/search?q=test'
+        );
+
+        expect(
+          response.status
+        ).toBe(200);
+
+        expect(body.ok).toBe(true);
+
+        expect(
+          body.provider
+        ).toBe('Anichi');
+
+        expect(
+          body.query
+        ).toBe('test');
+
+        expect(
+          body.shows
+        ).toEqual([]);
+      }
+    );
+
+    it(
+      'returns null details',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/providers/Anichi/details?id=test'
+        );
+
+        expect(
+          response.status
+        ).toBe(200);
+
+        expect(body).toEqual({
+          ok: true,
+          provider: 'Anichi',
+          item: null
+        });
+      }
+    );
+
+    it(
+      'returns no episodes yet',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/providers/Anichi/episodes?id=test'
+        );
+
+        expect(
+          response.status
+        ).toBe(200);
+
+        expect(body).toEqual({
+          ok: true,
+          provider: 'Anichi',
+          episodes: []
+        });
+      }
+    );
+
+    it(
+      'returns no playable sources yet',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/providers/Anichi/sources?id=test'
+        );
+
+        expect(
+          response.status
+        ).toBe(200);
+
+        expect(body).toEqual({
+          ok: true,
+          provider: 'Anichi',
+          sources: []
+        });
+      }
+    );
+
+    it(
+      'returns ADAPTER_NOT_INSTALLED for unknown provider',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/providers/UnknownProvider/home'
+        );
+
+        expect(
+          response.status
+        ).toBe(404);
+
+        expect(
+          body.ok
+        ).toBe(false);
+
+        expect(
+          body.code
+        ).toBe(
+          'ADAPTER_NOT_INSTALLED'
+        );
+      }
+    );
+
+    it(
+      'returns JSON for unknown API routes',
+      async () => {
+        const {
+          response,
+          body
+        } = await getJson(
+          '/api/this-route-does-not-exist'
+        );
+
+        expect(
+          response.status
+        ).toBe(404);
+
+        expect(
+          response.headers.get(
+            'content-type'
+          )
+        ).toContain(
+          'application/json'
+        );
+
+        expect(
+          body.ok
+        ).toBe(false);
+
+        expect(
+          body.error
+        ).toBe(
+          'API_ROUTE_NOT_FOUND'
+        );
+      }
+    );
+  }
+);
