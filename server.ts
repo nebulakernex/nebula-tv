@@ -515,6 +515,7 @@ app.get(
     req,
     res
   ) => {
+
     const adapter =
       adapters[
         req.params.provider
@@ -540,10 +541,90 @@ app.get(
     }
 
 
+    const requestedPage =
+      Number.parseInt(
+        String(
+          req.query.page ||
+          '1'
+        ),
+        10
+      );
+
+
+    const page =
+      Number.isFinite(
+        requestedPage
+      )
+        ? Math.min(
+            1000,
+
+            Math.max(
+              1,
+              requestedPage
+            )
+          )
+        : 1;
+
+
     try {
-      const shows =
-        await adapter
-          .getHome();
+
+      let shows:
+        Awaited<
+          ReturnType<
+            typeof adapter.getHome
+          >
+        >;
+
+
+      let pageInfo: {
+        currentPage:
+          number;
+
+        hasNextPage:
+          boolean;
+
+        perPage:
+          number;
+      };
+
+
+      if (
+        adapter.getHomePage
+      ) {
+        const result =
+          await adapter
+            .getHomePage(
+              page
+            );
+
+
+        shows =
+          result.shows;
+
+
+        pageInfo =
+          result.pageInfo;
+
+      } else {
+
+        shows =
+          page === 1
+            ? await adapter
+                .getHome()
+            : [];
+
+
+        pageInfo = {
+          currentPage:
+            page,
+
+          hasNextPage:
+            false,
+
+          perPage:
+            shows.length
+        };
+      }
 
 
       res.json({
@@ -552,6 +633,10 @@ app.get(
 
         provider:
           req.params.provider,
+
+        page,
+
+        pageInfo,
 
         shows,
 
@@ -562,6 +647,7 @@ app.get(
       });
 
     } catch (error) {
+
       sendProviderError(
         res,
         error
@@ -578,6 +664,7 @@ app.get(
     req,
     res
   ) => {
+
     const adapter =
       adapters[
         req.params.provider
@@ -603,19 +690,102 @@ app.get(
     }
 
 
+    const query =
+      (
+        req.query.q as
+        string
+      ) ||
+      '';
+
+
+    const requestedPage =
+      Number.parseInt(
+        String(
+          req.query.page ||
+          '1'
+        ),
+        10
+      );
+
+
+    const page =
+      Number.isFinite(
+        requestedPage
+      )
+        ? Math.min(
+            1000,
+
+            Math.max(
+              1,
+              requestedPage
+            )
+          )
+        : 1;
+
+
     try {
-      const query =
-        (
-          req.query.q as
-          string
-        ) ||
-        '';
+
+      let shows:
+        Awaited<
+          ReturnType<
+            typeof adapter.search
+          >
+        >;
 
 
-      const shows =
-        await adapter.search(
-          query
-        );
+      let pageInfo: {
+        currentPage:
+          number;
+
+        hasNextPage:
+          boolean;
+
+        perPage:
+          number;
+      };
+
+
+      if (
+        adapter.searchPage
+      ) {
+
+        const result =
+          await adapter
+            .searchPage(
+              query,
+              page
+            );
+
+
+        shows =
+          result.shows;
+
+
+        pageInfo =
+          result.pageInfo;
+
+      } else {
+
+        shows =
+          page === 1
+            ? await adapter
+                .search(
+                  query
+                )
+            : [];
+
+
+        pageInfo = {
+          currentPage:
+            page,
+
+          hasNextPage:
+            false,
+
+          perPage:
+            shows.length
+        };
+      }
 
 
       res.json({
@@ -627,6 +797,10 @@ app.get(
 
         query,
 
+        page,
+
+        pageInfo,
+
         shows,
 
         health:
@@ -636,6 +810,7 @@ app.get(
       });
 
     } catch (error) {
+
       sendProviderError(
         res,
         error

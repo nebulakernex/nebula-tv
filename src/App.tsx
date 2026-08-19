@@ -143,6 +143,50 @@ function App() {
 
 
   const [
+    isLoadingMore,
+    setIsLoadingMore
+  ] =
+    useState(false);
+
+
+  const [
+    homePage,
+    setHomePage
+  ] =
+    useState(1);
+
+
+  const [
+    searchPage,
+    setSearchPage
+  ] =
+    useState(1);
+
+
+  const [
+    hasMoreHome,
+    setHasMoreHome
+  ] =
+    useState(false);
+
+
+  const [
+    hasMoreSearch,
+    setHasMoreSearch
+  ] =
+    useState(false);
+
+
+  const [
+    providerHealth,
+    setProviderHealth
+  ] =
+    useState<any>(
+      null
+    );
+
+
+  const [
     catalogNotice,
     setCatalogNotice
   ] =
@@ -260,6 +304,16 @@ function App() {
                 activeProvider +
                 '/health'
               );
+
+
+            if (
+              healthData
+                ?.health
+            ) {
+              setProviderHealth(
+                healthData.health
+              );
+            }
 
 
             const cooldown =
@@ -642,7 +696,7 @@ function App() {
           await fetchJson<any>(
             '/api/providers/' +
             activeProvider +
-            '/home'
+            '/home?page=1'
           );
 
         if (cancelled) {
@@ -667,6 +721,29 @@ function App() {
         setHomePlaylist(
           shows
         );
+
+
+        setHomePage(
+          1
+        );
+
+
+        setHasMoreHome(
+          Boolean(
+            data
+              ?.pageInfo
+              ?.hasNextPage
+          )
+        );
+
+
+        if (
+          data?.health
+        ) {
+          setProviderHealth(
+            data.health
+          );
+        }
 
 
         setCatalogNotice(
@@ -761,6 +838,17 @@ function App() {
         false
       );
 
+
+      setSearchPage(
+        1
+      );
+
+
+      setHasMoreSearch(
+        false
+      );
+
+
       setPlaylist(
         homePlaylist
       );
@@ -800,7 +888,8 @@ function App() {
                 '/search?q=' +
                 encodeURIComponent(
                   query
-                )
+                ) +
+                '&page=1'
               );
 
             if (cancelled) {
@@ -825,6 +914,29 @@ function App() {
             setPlaylist(
               results
             );
+
+
+            setSearchPage(
+              1
+            );
+
+
+            setHasMoreSearch(
+              Boolean(
+                data
+                  ?.pageInfo
+                  ?.hasNextPage
+              )
+            );
+
+
+            if (
+              data?.health
+            ) {
+              setProviderHealth(
+                data.health
+              );
+            }
 
 
             setCatalogNotice(
@@ -908,6 +1020,262 @@ function App() {
     cancelCatalogRetry,
     scheduleCatalogRecovery
   ]);
+
+
+  /* =======================================================
+     LOAD MORE
+     ======================================================= */
+
+  const handleLoadMore =
+    useCallback(
+      async () => {
+
+        if (
+          isLoadingMore ||
+          !activeProvider
+        ) {
+          return;
+        }
+
+
+        const query =
+          searchQuery.trim();
+
+
+        const isSearch =
+          Boolean(
+            query
+          );
+
+
+        const hasMore =
+          isSearch
+            ? hasMoreSearch
+            : hasMoreHome;
+
+
+        if (!hasMore) {
+          return;
+        }
+
+
+        const nextPage =
+          isSearch
+            ? searchPage + 1
+            : homePage + 1;
+
+
+        setIsLoadingMore(
+          true
+        );
+
+
+        try {
+
+          const endpoint =
+            isSearch
+
+              ? (
+                  '/api/providers/' +
+                  activeProvider +
+                  '/search?q=' +
+                  encodeURIComponent(
+                    query
+                  ) +
+                  '&page=' +
+                  String(
+                    nextPage
+                  )
+                )
+
+              : (
+                  '/api/providers/' +
+                  activeProvider +
+                  '/home?page=' +
+                  String(
+                    nextPage
+                  )
+                );
+
+
+          const data =
+            await fetchJson<any>(
+              endpoint
+            );
+
+
+          const rawShows =
+            Array.isArray(
+              data?.shows
+            )
+              ? data.shows
+              : [];
+
+
+          const incoming:
+            ShowItem[] =
+              rawShows.map(
+                (raw: any) =>
+                  normalizeProviderShow(
+                    raw
+                  )
+              );
+
+
+          const mergeUnique =
+            (
+              current:
+                ShowItem[]
+            ): ShowItem[] => {
+
+              const merged =
+                new Map<
+                  string,
+                  ShowItem
+                >();
+
+
+              for (
+                const item of
+                current
+              ) {
+                merged.set(
+                  item.id,
+                  item
+                );
+              }
+
+
+              for (
+                const item of
+                incoming
+              ) {
+                merged.set(
+                  item.id,
+                  {
+                    ...merged.get(
+                      item.id
+                    ),
+
+                    ...item
+                  }
+                );
+              }
+
+
+              return Array.from(
+                merged.values()
+              );
+            };
+
+
+          if (isSearch) {
+
+            setPlaylist(
+              previous =>
+                mergeUnique(
+                  previous
+                )
+            );
+
+
+            setSearchPage(
+              nextPage
+            );
+
+
+            setHasMoreSearch(
+              Boolean(
+                data
+                  ?.pageInfo
+                  ?.hasNextPage
+              )
+            );
+
+          } else {
+
+            setHomePlaylist(
+              previous => {
+
+                const merged =
+                  mergeUnique(
+                    previous
+                  );
+
+
+                setPlaylist(
+                  merged
+                );
+
+
+                return merged;
+              }
+            );
+
+
+            setHomePage(
+              nextPage
+            );
+
+
+            setHasMoreHome(
+              Boolean(
+                data
+                  ?.pageInfo
+                  ?.hasNextPage
+              )
+            );
+          }
+
+
+          if (
+            data?.health
+          ) {
+            setProviderHealth(
+              data.health
+            );
+          }
+
+
+          setCatalogNotice(
+            null
+          );
+
+
+          cancelCatalogRetry();
+
+        } catch (error) {
+
+          console.error(
+            'Load more failed:',
+            error
+          );
+
+
+          await scheduleCatalogRecovery(
+            error
+          );
+
+        } finally {
+
+          setIsLoadingMore(
+            false
+          );
+        }
+      },
+
+      [
+        activeProvider,
+        cancelCatalogRetry,
+        hasMoreHome,
+        hasMoreSearch,
+        homePage,
+        isLoadingMore,
+        scheduleCatalogRecovery,
+        searchPage,
+        searchQuery
+      ]
+    );
 
 
   /* =======================================================
@@ -1013,6 +1381,20 @@ function App() {
                 )
               )
             ]);
+
+          const requestHealth =
+            detailsData?.health ||
+            episodeData?.health;
+
+
+          if (
+            requestHealth
+          ) {
+            setProviderHealth(
+              requestHealth
+            );
+          }
+
 
           const detailsRaw =
             detailsData?.item ||
@@ -1600,6 +1982,86 @@ function App() {
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-8 max-w-[1600px] mx-auto w-full">
 
+          {providerHealth && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-white/10 bg-white/[0.025]">
+
+              <div className="flex items-center gap-2">
+
+                <span
+                  className={
+                    'w-2 h-2 rounded-full ' +
+                    (
+                      providerHealth.status ===
+                        'ok'
+                        ? 'bg-emerald-400'
+                        : providerHealth.status ===
+                            'degraded'
+                          ? 'bg-amber-400'
+                          : providerHealth.status ===
+                              'unavailable'
+                            ? 'bg-red-400'
+                            : 'bg-zinc-500'
+                    )
+                  }
+                />
+
+                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200">
+
+                  {providerHealth.status ===
+                    'ok'
+                    ? 'Catalog Online'
+                    : providerHealth.status ===
+                        'degraded'
+                      ? 'Catalog Limited'
+                      : providerHealth.status ===
+                          'unavailable'
+                        ? 'Catalog Offline'
+                        : 'Catalog Starting'}
+
+                </span>
+
+              </div>
+
+
+              <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+
+                {typeof
+                  providerHealth
+                    .rateLimitRemaining ===
+                  'number' &&
+                typeof
+                  providerHealth
+                    .rateLimitLimit ===
+                  'number' && (
+
+                  <span>
+                    {providerHealth.rateLimitRemaining}
+                    {' / '}
+                    {providerHealth.rateLimitLimit}
+                    {' requests available'}
+                  </span>
+
+                )}
+
+
+                {typeof
+                  providerHealth
+                    .cacheEntries ===
+                  'number' && (
+
+                  <span>
+                    {providerHealth.cacheEntries}
+                    {' cache entries'}
+                  </span>
+
+                )}
+
+              </div>
+
+            </div>
+          )}
+
+
           {catalogNotice && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-amber-400/20 bg-amber-400/5">
 
@@ -1773,23 +2235,64 @@ function App() {
 
                 </div>
               ) : (
-                <MovieGrid
-                  items={
-                    filteredPlaylist
-                  }
+                <>
+                  <MovieGrid
+                    items={
+                      filteredPlaylist
+                    }
 
-                  activeId={
-                    activeId
-                  }
+                    activeId={
+                      activeId
+                    }
 
-                  onSelectItem={
-                    handleSelectItem
-                  }
+                    onSelectItem={
+                      handleSelectItem
+                    }
 
-                  activeCategory={
-                    activeCategory
-                  }
-                />
+                    activeCategory={
+                      activeCategory
+                    }
+                  />
+
+
+                  {(searchQuery.trim()
+                    ? hasMoreSearch
+                    : hasMoreHome) && (
+
+                    <div className="flex flex-col items-center justify-center gap-3 pt-2 pb-8">
+
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+
+                        {playlist.length}
+                        {' titles indexed'}
+
+                      </div>
+
+
+                      <button
+                        type="button"
+                        disabled={
+                          isLoadingMore
+                        }
+                        onClick={
+                          handleLoadMore
+                        }
+                        className="min-w-44 px-6 py-3 rounded-xl border border-[#7000FF]/35 bg-[#7000FF]/10 hover:bg-[#7000FF]/20 disabled:opacity-50 disabled:cursor-wait text-[11px] font-black uppercase tracking-[0.18em] text-[#c084fc] transition-colors"
+                      >
+
+                        {isLoadingMore
+                          ? 'Loading More...'
+                          : searchQuery.trim()
+                            ? 'Load More Results'
+                            : 'Load More Catalog'}
+
+                      </button>
+
+                    </div>
+
+                  )}
+
+                </>
               )}
             </>
           )}

@@ -41,6 +41,19 @@ export interface ProviderShow {
   providerName?: string;
 }
 
+export interface ProviderPageInfo {
+  currentPage: number;
+  hasNextPage: boolean;
+  perPage: number;
+}
+
+export interface ProviderCatalogPage {
+  shows: ProviderShow[];
+
+  pageInfo:
+    ProviderPageInfo;
+}
+
 export interface ProviderHealthStatus {
   provider: string;
   upstream: string;
@@ -88,7 +101,6 @@ export interface CloudstreamProviderAdapter {
 
   /*
    * Playback allow-list only.
-   * Catalog APIs do not belong here.
    */
   allowedHosts: string[];
 
@@ -99,6 +111,24 @@ export interface CloudstreamProviderAdapter {
     query: string
   ):
     Promise<ProviderShow[]>;
+
+  /*
+   * Optional paginated catalog
+   * methods.
+   *
+   * Existing providers remain
+   * backward-compatible.
+   */
+  getHomePage?(
+    page: number
+  ):
+    Promise<ProviderCatalogPage>;
+
+  searchPage?(
+    query: string,
+    page: number
+  ):
+    Promise<ProviderCatalogPage>;
 
   getDetails(
     id: string

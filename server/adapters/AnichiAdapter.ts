@@ -1,5 +1,6 @@
 import type {
   CloudstreamProviderAdapter,
+  ProviderCatalogPage,
   ProviderEpisode,
   ProviderHealthStatus,
   ProviderShow
@@ -90,6 +91,10 @@ const MEDIA_STALE_MS =
 
 const MAX_CACHE_ENTRIES =
   200;
+
+
+const CATALOG_PAGE_SIZE =
+  24;
 
 
 interface AniListTitle {
@@ -297,14 +302,14 @@ const INDENTED_MEDIA_FIELDS =
 const homeCache =
   new Map<
     string,
-    CacheEntry<ProviderShow[]>
+    CacheEntry<ProviderCatalogPage>
   >();
 
 
 const searchCache =
   new Map<
     string,
-    CacheEntry<ProviderShow[]>
+    CacheEntry<ProviderCatalogPage>
   >();
 
 
@@ -1459,29 +1464,159 @@ async function anilistQuery<T>(
 
 
 /* =========================================================
-   HOME
+   PAGE HELPERS
    ========================================================= */
 
-async function loadHome():
-Promise<ProviderShow[]> {
+function normalizePageNumber(
+  page:
+    number
+): number {
+  if (
+    !Number.isFinite(
+      page
+    )
+  ) {
+    return 1;
+  }
+
+  return Math.min(
+    1000,
+
+    Math.max(
+      1,
+
+      Math.floor(
+        page
+      )
+    )
+  );
+}
+
+
+interface AniListCatalogPage {
+  pageInfo?: {
+    currentPage?:
+      number | null;
+
+    hasNextPage?:
+      boolean | null;
+
+    perPage?:
+      number | null;
+  } | null;
+
+  media?:
+    AniListMedia[] |
+    null;
+}
+
+
+function toCatalogPage(
+  source:
+    AniListCatalogPage |
+    null |
+    undefined,
+
+  requestedPage:
+    number
+): ProviderCatalogPage {
+
+  const media =
+    source?.media ||
+    [];
+
+
+  const pageInfo =
+    source?.pageInfo;
+
+
+  return {
+    shows:
+      media.map(
+        toProviderShow
+      ),
+
+    pageInfo: {
+      currentPage:
+        typeof
+          pageInfo
+            ?.currentPage ===
+          'number'
+          ? pageInfo.currentPage
+          : requestedPage,
+
+      hasNextPage:
+        Boolean(
+          pageInfo
+            ?.hasNextPage
+        ),
+
+      perPage:
+        typeof
+          pageInfo
+            ?.perPage ===
+          'number'
+          ? pageInfo.perPage
+          : CATALOG_PAGE_SIZE
+    }
+  };
+}
+
+
+/* =========================================================
+   HOME PAGINATION
+   ========================================================= */
+
+async function loadHomePage(
+  requestedPage:
+    number
+): Promise<ProviderCatalogPage> {
+
+  const page =
+    normalizePageNumber(
+      requestedPage
+    );
+
+
+  const cacheKey =
+    'page-' +
+    String(
+      page
+    );
+
+
   return loadCached(
     'home',
-    'page-1',
+    cacheKey,
     homeCache,
     HOME_FRESH_MS,
     HOME_STALE_MS,
 
     async () => {
+
       const query =
         [
-          'query HomeCatalog {',
-          '  Page(page: 1, perPage: 24) {',
+          'query HomeCatalog($page: Int) {',
+
+          '  Page(',
+          '    page: $page',
+          '    perPage: 24',
+          '  ) {',
+
+          '    pageInfo {',
+          '      currentPage',
+          '      hasNextPage',
+          '      perPage',
+          '    }',
+
           '    media(',
           '      type: ANIME',
           '      isAdult: false',
           '      sort: TRENDING_DESC',
           '    ) {',
+
           INDENTED_MEDIA_FIELDS,
+
           '    }',
           '  }',
           '}'
@@ -1490,49 +1625,87 @@ Promise<ProviderShow[]> {
 
       const data =
         await anilistQuery<{
-          Page?: {
-            media?:
-              AniListMedia[] |
-              null;
-          } | null;
+          Page?:
+            AniListCatalogPage |
+            null;
         }>(
           query,
-          {}
+          {
+            page
+          }
         );
 
 
-      return (
-        data.Page?.media ||
-        []
-      ).map(
-        toProviderShow
+      return toCatalogPage(
+        data.Page,
+        page
       );
     }
   );
 }
 
 
+async function loadHome():
+Promise<ProviderShow[]> {
+
+  const result =
+    await loadHomePage(
+      1
+    );
+
+
+  return result.shows;
+}
+
+
 /* =========================================================
-   SEARCH
+   SEARCH PAGINATION
    ========================================================= */
 
-async function searchCatalog(
+async function searchCatalogPage(
   searchText:
-    string
-): Promise<ProviderShow[]> {
+    string,
+
+  requestedPage:
+    number
+): Promise<ProviderCatalogPage> {
 
   const trimmed =
     searchText.trim();
 
 
+  const page =
+    normalizePageNumber(
+      requestedPage
+    );
+
+
   if (!trimmed) {
-    return [];
+    return {
+      shows:
+        [],
+
+      pageInfo: {
+        currentPage:
+          page,
+
+        hasNextPage:
+          false,
+
+        perPage:
+          CATALOG_PAGE_SIZE
+      }
+    };
   }
 
 
   const cacheKey =
     trimmed
-      .toLowerCase();
+      .toLowerCase() +
+    ':page-' +
+    String(
+      page
+    );
 
 
   return loadCached(
@@ -1543,17 +1716,34 @@ async function searchCatalog(
     SEARCH_STALE_MS,
 
     async () => {
+
       const query =
         [
-          'query SearchCatalog($search: String) {',
-          '  Page(page: 1, perPage: 24) {',
+          'query SearchCatalog(',
+          '  $search: String',
+          '  $page: Int',
+          ') {',
+
+          '  Page(',
+          '    page: $page',
+          '    perPage: 24',
+          '  ) {',
+
+          '    pageInfo {',
+          '      currentPage',
+          '      hasNextPage',
+          '      perPage',
+          '    }',
+
           '    media(',
           '      search: $search',
           '      type: ANIME',
           '      isAdult: false',
           '      sort: SEARCH_MATCH',
           '    ) {',
+
           INDENTED_MEDIA_FIELDS,
+
           '    }',
           '  }',
           '}'
@@ -1562,30 +1752,47 @@ async function searchCatalog(
 
       const data =
         await anilistQuery<{
-          Page?: {
-            media?:
-              AniListMedia[] |
-              null;
-          } | null;
+          Page?:
+            AniListCatalogPage |
+            null;
         }>(
           query,
           {
             search:
-              trimmed
+              trimmed,
+
+            page
           }
         );
 
 
-      return (
-        data.Page?.media ||
-        []
-      ).map(
-        toProviderShow
+      return toCatalogPage(
+        data.Page,
+        page
       );
     }
   );
 }
 
+
+async function searchCatalog(
+  searchText:
+    string
+): Promise<ProviderShow[]> {
+
+  const result =
+    await searchCatalogPage(
+      searchText,
+      1
+    );
+
+
+  return result.shows;
+}
+
+
+/* =========================================================
+   SHARED MEDIA RECORD
 
 /* =========================================================
    SHARED MEDIA RECORD
@@ -1856,12 +2063,36 @@ CloudstreamProviderAdapter = {
   },
 
 
+  async getHomePage(
+    page:
+      number
+  ) {
+    return loadHomePage(
+      page
+    );
+  },
+
+
   async search(
     query:
       string
   ) {
     return searchCatalog(
       query
+    );
+  },
+
+
+  async searchPage(
+    query:
+      string,
+
+    page:
+      number
+  ) {
+    return searchCatalogPage(
+      query,
+      page
     );
   },
 
