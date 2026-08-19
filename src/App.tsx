@@ -24,6 +24,7 @@ import {
 } from './data/defaultData';
 
 import {
+  APIError,
   fetchJson,
   deepMerge
 } from './lib/api';
@@ -140,6 +141,32 @@ function App() {
   ] =
     useState(false);
 
+
+  const [
+    catalogNotice,
+    setCatalogNotice
+  ] =
+    useState<
+      string | null
+    >(null);
+
+
+  const [
+    catalogRetryNonce,
+    setCatalogRetryNonce
+  ] =
+    useState(0);
+
+
+  const catalogRetryTimerRef =
+    useRef<
+      ReturnType<
+        typeof setTimeout
+      > |
+      null
+    >(null);
+
+
   /*
    * Used by asynchronous home loading
    * to know whether the user has begun
@@ -154,6 +181,171 @@ function App() {
     getActiveCatalogProvider(
       settings
     );
+
+
+  const cancelCatalogRetry =
+    useCallback(
+      () => {
+        if (
+          catalogRetryTimerRef
+            .current
+        ) {
+          clearTimeout(
+            catalogRetryTimerRef
+              .current
+          );
+
+          catalogRetryTimerRef
+            .current =
+            null;
+        }
+      },
+      []
+    );
+
+
+  const retryCatalogNow =
+    useCallback(
+      () => {
+        cancelCatalogRetry();
+
+        setCatalogRetryNonce(
+          value =>
+            value + 1
+        );
+      },
+      [
+        cancelCatalogRetry
+      ]
+    );
+
+
+  const scheduleCatalogRecovery =
+    useCallback(
+      async (
+        error:
+          unknown
+      ) => {
+
+        const isRateLimit =
+          error instanceof
+            APIError &&
+          error.code ===
+            'UPSTREAM_RATE_LIMITED';
+
+
+        setCatalogNotice(
+          isRateLimit
+            ? 'AniList is temporarily rate limiting catalog requests. Nebula kept the current catalog and will retry automatically.'
+            : 'The catalog provider is temporarily unavailable. Nebula kept the current catalog and will retry automatically.'
+        );
+
+
+        cancelCatalogRetry();
+
+
+        let retryDelayMs =
+          isRateLimit
+            ? 65000
+            : 15000;
+
+
+        if (
+          activeProvider
+        ) {
+          try {
+            const healthData =
+              await fetchJson<any>(
+                '/api/providers/' +
+                activeProvider +
+                '/health'
+              );
+
+
+            const cooldown =
+              healthData
+                ?.health
+                ?.cooldownUntil;
+
+
+            if (
+              typeof cooldown ===
+              'string'
+            ) {
+              const cooldownTime =
+                Date.parse(
+                  cooldown
+                );
+
+
+              if (
+                Number.isFinite(
+                  cooldownTime
+                )
+              ) {
+                retryDelayMs =
+                  Math.max(
+                    5000,
+
+                    cooldownTime -
+                    Date.now() +
+                    2500
+                  );
+              }
+            }
+
+          } catch {
+            /*
+             * Health lookup is only
+             * used to improve timing.
+             * The fallback delay above
+             * remains valid.
+             */
+          }
+        }
+
+
+        retryDelayMs =
+          Math.min(
+            120000,
+            retryDelayMs
+          );
+
+
+        catalogRetryTimerRef
+          .current =
+          setTimeout(
+            () => {
+              catalogRetryTimerRef
+                .current =
+                null;
+
+              setCatalogRetryNonce(
+                value =>
+                  value + 1
+              );
+            },
+
+            retryDelayMs
+          );
+      },
+      [
+        activeProvider,
+        cancelCatalogRetry
+      ]
+    );
+
+
+  useEffect(
+    () => {
+      return () => {
+        cancelCatalogRetry();
+      };
+    },
+    [
+      cancelCatalogRetry
+    ]
+  );
 
 
   /* =======================================================
@@ -476,6 +668,14 @@ function App() {
           shows
         );
 
+
+        setCatalogNotice(
+          null
+        );
+
+        cancelCatalogRetry();
+
+
         /*
          * Only replace the visible
          * playlist with home if the
@@ -507,17 +707,18 @@ function App() {
           error
         );
 
-        setHomePlaylist(
-          []
+        /*
+         * IMPORTANT:
+         * Do not turn an upstream
+         * failure into an empty
+         * catalog.
+         *
+         * Keep whatever catalog the
+         * user already has visible.
+         */
+        await scheduleCatalogRecovery(
+          error
         );
-
-        if (
-          !searchQueryRef
-            .current
-            .trim()
-        ) {
-          setPlaylist([]);
-        }
       }
     }
 
@@ -529,7 +730,10 @@ function App() {
     };
   }, [
     isSettingsLoaded,
-    activeProvider
+    activeProvider,
+    catalogRetryNonce,
+    cancelCatalogRetry,
+    scheduleCatalogRecovery
   ]);
 
 
@@ -622,6 +826,14 @@ function App() {
               results
             );
 
+
+            setCatalogNotice(
+              null
+            );
+
+            cancelCatalogRetry();
+
+
             /*
              * Keep active ID valid
              * for the current list.
@@ -657,7 +869,17 @@ function App() {
               error
             );
 
-            setPlaylist([]);
+
+            /*
+             * Do NOT convert a 429,
+             * timeout or provider
+             * outage into "0 results".
+             *
+             * Keep the existing list.
+             */
+            await scheduleCatalogRecovery(
+              error
+            );
           } finally {
             if (!cancelled) {
               setIsSearching(
@@ -666,7 +888,7 @@ function App() {
             }
           }
         },
-        350
+        650
       );
 
     return () => {
@@ -681,7 +903,10 @@ function App() {
     searchQuery,
     isSettingsLoaded,
     activeProvider,
-    homePlaylist
+    homePlaylist,
+    catalogRetryNonce,
+    cancelCatalogRetry,
+    scheduleCatalogRecovery
   ]);
 
 
@@ -814,6 +1039,14 @@ function App() {
           enrichedItem.episodes =
             episodes;
 
+
+          setCatalogNotice(
+            null
+          );
+
+          cancelCatalogRetry();
+
+
           setPlaylist(
             previous =>
               upsertShow(
@@ -856,6 +1089,11 @@ function App() {
             'Failed to load title details:',
             error
           );
+
+
+          await scheduleCatalogRecovery(
+            error
+          );
         } finally {
           setIsLoadingDetails(
             false
@@ -865,7 +1103,9 @@ function App() {
       [
         activeProvider,
         playlist,
-        homePlaylist
+        homePlaylist,
+        cancelCatalogRetry,
+        scheduleCatalogRecovery
       ]
     );
 
@@ -1360,6 +1600,32 @@ function App() {
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-8 max-w-[1600px] mx-auto w-full">
 
+          {catalogNotice && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-amber-400/20 bg-amber-400/5">
+
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
+                  Catalog temporarily limited
+                </div>
+
+                <p className="mt-1 text-xs text-zinc-300">
+                  {catalogNotice}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  retryCatalogNow
+                }
+                className="shrink-0 px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-wider text-white transition-colors"
+              >
+                Retry Catalog
+              </button>
+
+            </div>
+          )}
+
           {activeView ===
           'player' ? (
             <>
@@ -1482,22 +1748,26 @@ function App() {
 
                   <h3 className="text-xl font-medium text-white mb-2">
 
-                    {searchQuery.trim()
-                      ? 'No catalog matches found'
-                      : activeProvider
-                        ? 'No catalog items available'
-                        : 'No provider adapter enabled'}
+                    {catalogNotice
+                      ? 'Catalog temporarily unavailable'
+                      : searchQuery.trim()
+                        ? 'No catalog matches found'
+                        : activeProvider
+                          ? 'No catalog items available'
+                          : 'No provider adapter enabled'}
 
                   </h3>
 
 
                   <p className="text-zinc-400 max-w-md">
 
-                    {searchQuery.trim()
-                      ? 'Try a different title or search keyword.'
-                      : activeProvider
-                        ? 'The provider catalog returned no titles.'
-                        : 'Enable an installed provider adapter in the Admin panel.'}
+                    {catalogNotice
+                      ? 'Nebula will retry automatically. Existing cached results are kept whenever available.'
+                      : searchQuery.trim()
+                        ? 'Try a different title or search keyword.'
+                        : activeProvider
+                          ? 'The provider catalog returned no titles.'
+                          : 'Enable an installed provider adapter in the Admin panel.'}
 
                   </p>
 

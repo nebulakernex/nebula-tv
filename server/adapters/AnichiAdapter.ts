@@ -47,33 +47,46 @@ const ANILIST_TIMEOUT_MS =
   );
 
 
+/*
+ * Keep automated tests instant.
+ *
+ * Production spaces uncached AniList
+ * request starts so Nebula stays below
+ * the observed upstream request budget
+ * and avoids burst spikes.
+ */
+const ANILIST_MIN_INTERVAL_MS =
+  process.env.NODE_ENV ===
+    'test'
+    ? 0
+    : readPositiveInt(
+        process.env
+          .ANILIST_MIN_INTERVAL_MS,
+        2500,
+        0,
+        10000
+      );
+
+
 const HOME_FRESH_MS =
-  5 * 60 * 1000;
+  15 * 60 * 1000;
 
 const HOME_STALE_MS =
   60 * 60 * 1000;
 
 
 const SEARCH_FRESH_MS =
-  10 * 60 * 1000;
+  30 * 60 * 1000;
 
 const SEARCH_STALE_MS =
   60 * 60 * 1000;
 
 
-const DETAILS_FRESH_MS =
-  30 * 60 * 1000;
-
-const DETAILS_STALE_MS =
-  6 * 60 * 60 * 1000;
-
-
-const EPISODES_FRESH_MS =
-  10 * 60 * 1000;
-
-const EPISODES_STALE_MS =
+const MEDIA_FRESH_MS =
   60 * 60 * 1000;
 
+const MEDIA_STALE_MS =
+  12 * 60 * 60 * 1000;
 
 const MAX_CACHE_ENTRIES =
   200;
@@ -295,19 +308,21 @@ const searchCache =
   >();
 
 
-const detailsCache =
+/*
+ * Details and episode numbering now
+ * share ONE AniList Media cache.
+ *
+ * When the UI asks for details and
+ * episodes at the same time, only one
+ * upstream GraphQL request is made.
+ */
+const mediaCache =
   new Map<
     string,
-    CacheEntry<ProviderShow | null>
+    CacheEntry<
+      AniListMedia | null
+    >
   >();
-
-
-const episodesCache =
-  new Map<
-    string,
-    CacheEntry<ProviderEpisode[]>
-  >();
-
 
 const inFlight =
   new Map<
@@ -348,11 +363,99 @@ number {
   return (
     homeCache.size +
     searchCache.size +
-    detailsCache.size +
-    episodesCache.size
+    mediaCache.size
   );
 }
 
+
+/* =========================================================
+   REQUEST START RATE GATE
+   ========================================================= */
+
+let requestStartGate:
+Promise<void> =
+  Promise.resolve();
+
+let nextAllowedRequestAtMs =
+  0;
+
+
+function delay(
+  milliseconds:
+    number
+): Promise<void> {
+  if (
+    milliseconds <= 0
+  ) {
+    return Promise.resolve();
+  }
+
+  return new Promise(
+    resolve => {
+      setTimeout(
+        resolve,
+        milliseconds
+      );
+    }
+  );
+}
+
+
+async function waitForAniListSlot():
+Promise<void> {
+
+  const previousGate =
+    requestStartGate;
+
+
+  let releaseGate:
+    () => void =
+      () => {};
+
+
+  requestStartGate =
+    new Promise<void>(
+      resolve => {
+        releaseGate =
+          resolve;
+      }
+    );
+
+
+  await previousGate;
+
+
+  try {
+    const waitMs =
+      Math.max(
+        0,
+
+        nextAllowedRequestAtMs -
+        Date.now()
+      );
+
+
+    if (
+      waitMs > 0
+    ) {
+      await delay(
+        waitMs
+      );
+    }
+
+
+    nextAllowedRequestAtMs =
+      Date.now() +
+      ANILIST_MIN_INTERVAL_MS;
+
+  } finally {
+    releaseGate();
+  }
+}
+
+
+/* =========================================================
+   HEALTH + RATE LIMIT STATE
 
 /* =========================================================
    HEALTH + RATE LIMIT STATE
@@ -1073,6 +1176,52 @@ async function anilistQuery<T>(
   }
 
 
+  /*
+   * Serialize uncached AniList request
+   * starts and leave space between them.
+   */
+  await waitForAniListSlot();
+
+
+  /*
+   * Another queued request may have
+   * received a 429 while this request
+   * was waiting for its slot.
+   *
+   * Re-check the cooldown before
+   * contacting AniList.
+   */
+  const afterWait =
+    Date.now();
+
+
+  if (
+    cooldownUntilMs >
+    afterWait
+  ) {
+    const retry =
+      Math.max(
+        1,
+
+        Math.ceil(
+          (
+            cooldownUntilMs -
+            afterWait
+          ) /
+          1000
+        )
+      );
+
+
+    throw new CatalogUpstreamError(
+      'AniList catalog is temporarily rate limited',
+      503,
+      'UPSTREAM_RATE_LIMITED',
+      retry
+    );
+  }
+
+
   const controller =
     new AbortController();
 
@@ -1439,13 +1588,14 @@ async function searchCatalog(
 
 
 /* =========================================================
-   DETAILS
+   SHARED MEDIA RECORD
+   Used by BOTH details + episodes.
    ========================================================= */
 
-async function loadDetails(
+async function loadMediaRecord(
   id:
     string
-): Promise<ProviderShow | null> {
+): Promise<AniListMedia | null> {
 
   const mediaId =
     Number.parseInt(
@@ -1470,13 +1620,26 @@ async function loadDetails(
 
 
   return loadCached(
-    'details',
+    'media',
     cacheKey,
-    detailsCache,
-    DETAILS_FRESH_MS,
-    DETAILS_STALE_MS,
+    mediaCache,
+    MEDIA_FRESH_MS,
+    MEDIA_STALE_MS,
 
     async () => {
+      /*
+       * Keep the query name "Details"
+       * so the existing mocked unit
+       * tests remain deterministic.
+       *
+       * MEDIA_FIELDS already includes:
+       * - episodes
+       * - status
+       * - nextAiringEpisode
+       *
+       * Therefore this one request can
+       * serve both details and episodes.
+       */
       const query =
         [
           'query Details($id: Int) {',
@@ -1501,15 +1664,37 @@ async function loadDetails(
         );
 
 
-      if (!data.Media) {
-        return null;
-      }
-
-
-      return toProviderShow(
-        data.Media
+      return (
+        data.Media ||
+        null
       );
     }
+  );
+}
+
+
+/* =========================================================
+   DETAILS
+   ========================================================= */
+
+async function loadDetails(
+  id:
+    string
+): Promise<ProviderShow | null> {
+
+  const media =
+    await loadMediaRecord(
+      id
+    );
+
+
+  if (!media) {
+    return null;
+  }
+
+
+  return toProviderShow(
+    media
   );
 }
 
@@ -1523,158 +1708,91 @@ async function loadEpisodes(
     string
 ): Promise<ProviderEpisode[]> {
 
-  const mediaId =
-    Number.parseInt(
-      id,
-      10
+  const media =
+    await loadMediaRecord(
+      id
     );
 
 
-  if (
-    !Number.isFinite(
-      mediaId
-    )
-  ) {
+  if (!media) {
     return [];
   }
 
 
-  const cacheKey =
-    String(
-      mediaId
-    );
+  let availableCount =
+    0;
 
 
-  return loadCached(
-    'episodes',
-    cacheKey,
-    episodesCache,
-    EPISODES_FRESH_MS,
-    EPISODES_STALE_MS,
+  if (
+    media.status ===
+      'FINISHED' &&
+    typeof
+      media.episodes ===
+      'number'
+  ) {
+    availableCount =
+      media.episodes;
+  }
 
-    async () => {
-      const query =
-        [
-          'query Episodes($id: Int) {',
-          '  Media(id: $id, type: ANIME) {',
-          '    id',
-          '    status',
-          '    episodes',
-          '    nextAiringEpisode {',
-          '      episode',
-          '    }',
-          '  }',
-          '}'
-        ].join('\n');
+  else if (
+    typeof
+      media
+        .nextAiringEpisode
+        ?.episode ===
+      'number'
+  ) {
+    availableCount =
+      Math.max(
+        0,
 
-
-      const data =
-        await anilistQuery<{
-          Media?: {
-            id:
-              number;
-
-            status?:
-              string | null;
-
-            episodes?:
-              number | null;
-
-            nextAiringEpisode?: {
-              episode?:
-                number | null;
-            } | null;
-
-          } | null;
-        }>(
-          query,
-          {
-            id:
-              mediaId
-          }
-        );
-
-
-      const media =
-        data.Media;
-
-
-      if (!media) {
-        return [];
-      }
-
-
-      let availableCount =
-        0;
-
-
-      if (
-        media.status ===
-          'FINISHED' &&
-        typeof
-          media.episodes ===
-          'number'
-      ) {
-        availableCount =
-          media.episodes;
-      }
-
-      else if (
-        typeof
-          media
-            .nextAiringEpisode
-            ?.episode ===
-          'number'
-      ) {
-        availableCount =
-          Math.max(
-            0,
-            media
-              .nextAiringEpisode
-              .episode -
-              1
-          );
-      }
-
-
-      return Array.from(
-        {
-          length:
-            availableCount
-        },
-
-        (
-          _value,
-          index
-        ) => {
-          const number =
-            index + 1;
-
-
-          return {
-            id:
-              String(
-                media.id
-              ) +
-              '-episode-' +
-              String(
-                number
-              ),
-
-            number,
-
-            title:
-              'Episode ' +
-              String(
-                number
-              )
-          };
-        }
+        media
+          .nextAiringEpisode
+          .episode -
+        1
       );
+  }
+
+
+  return Array.from(
+    {
+      length:
+        availableCount
+    },
+
+    (
+      _value,
+      index
+    ) => {
+
+      const number =
+        index + 1;
+
+
+      return {
+        id:
+          String(
+            media.id
+          ) +
+          '-episode-' +
+          String(
+            number
+          ),
+
+        number,
+
+        title:
+          'Episode ' +
+          String(
+            number
+          )
+      };
     }
   );
 }
 
+
+/* =========================================================
+   HEALTH
 
 /* =========================================================
    HEALTH
