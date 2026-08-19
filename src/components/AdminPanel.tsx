@@ -171,7 +171,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         id: `cloudstream-hexated-${Date.now()}`,
         name: "Hexated CloudStream Extensions",
         enabled: true,
-        endpoint: "/api/cloudstream/feed?plugin=LoklokProvider",
+        endpoint: "/api/providers/LoklokProvider/home",
         useProxy: true,
         rootPath: "shows",
         refreshMinutes: 15,
@@ -535,6 +535,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
                               {plugin.description}
                             </p>
+                            <div className="mt-1 flex gap-2 text-[10px] font-mono">
+                               <span className={plugin.status === 1 ? "text-green-400" : "text-yellow-400"}>Metadata available</span>
+                               <span className="text-white/20">•</span>
+                               <span className={plugin.adapterAvailable ? "text-green-400" : "text-red-400"}>{plugin.adapterAvailable ? "Adapter Installed" : "Adapter Not Installed"}</span>
+                               <span className="text-white/20">•</span>
+                               <span className={plugin.playable ? "text-emerald-400 font-bold" : "text-white/40"}>{plugin.playable ? "Playable" : "Metadata Only"}</span>
+                            </div>
                           </div>
                         </div>
 

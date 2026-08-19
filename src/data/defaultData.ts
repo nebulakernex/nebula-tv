@@ -49,7 +49,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "all",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=LoklokProvider"
+    sampleEndpoint: "/api/providers/LoklokProvider/home"
   },
   {
     name: "DramaCool",
@@ -62,7 +62,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=DramaCoolProvider"
+    sampleEndpoint: "/api/providers/DramaCoolProvider/home"
   },
   {
     name: "Sflix",
@@ -75,7 +75,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=SflixProvider"
+    sampleEndpoint: "/api/providers/SflixProvider/home"
   },
   {
     name: "AnimePahe",
@@ -88,7 +88,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "ja/en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=AnimePaheProvider"
+    sampleEndpoint: "/api/providers/AnimePaheProvider/home"
   },
   {
     name: "KissKh",
@@ -101,7 +101,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=KissKhProvider"
+    sampleEndpoint: "/api/providers/KissKhProvider/home"
   },
   {
     name: "SuperStream",
@@ -114,7 +114,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=SuperStreamProvider"
+    sampleEndpoint: "/api/providers/SuperStreamProvider/home"
   },
   {
     name: "Bilibili",
@@ -127,7 +127,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "zh/en/id",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=BilibiliProvider"
+    sampleEndpoint: "/api/providers/BilibiliProvider/home"
   },
   {
     name: "Uhdmovies",
@@ -140,7 +140,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=UhdmoviesProvider"
+    sampleEndpoint: "/api/providers/UhdmoviesProvider/home"
   },
   {
     name: "Novamovie",
@@ -153,7 +153,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=NovamovieProvider"
+    sampleEndpoint: "/api/providers/NovamovieProvider/home"
   },
   {
     name: "Voe",
@@ -166,7 +166,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=VoeProvider"
+    sampleEndpoint: "/api/providers/VoeProvider/home"
   },
   {
     name: "ViewAsian",
@@ -179,7 +179,7 @@ export const INITIAL_HEXATED_PLUGINS: CloudstreamPlugin[] = [
     lang: "en",
     status: 1,
     enabled: true,
-    sampleEndpoint: "/api/cloudstream/feed?plugin=ViewAsianProvider"
+    sampleEndpoint: "/api/providers/ViewAsianProvider/home"
   }
 ];
 
@@ -839,7 +839,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   },
   api: {
     enabled: true,
-    endpoint: "/api/cloudstream/feed",
+    endpoint: "/api/providers/Anichi/home",
     useProxy: true,
     rootPath: "shows",
     refreshMinutes: 15,
@@ -851,7 +851,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
       id: "cloudstream-hexated-repo",
       name: "Hexated CloudStream Extensions Repository",
       enabled: true,
-      endpoint: "/api/cloudstream/feed?repo=https://github.com/hexated/cloudstream-extensions-hexated/tree/master",
+      endpoint: "/api/providers/Anichi/home",
       useProxy: true,
       rootPath: "shows",
       refreshMinutes: 15,

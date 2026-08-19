@@ -95,12 +95,12 @@ export default function App() {
     const activeSettings = overrideSettings || settings;
     setIsSyncing(true);
     try {
-      const response = await fetch(`/api/cloudstream/repo?url=${encodeURIComponent(activeSettings.cloudstreamRepo.url)}`);
+      const response = await fetch(`/api/cloudstream/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: activeSettings.cloudstreamRepo.url }) });
       if (response.ok) {
         const data = await response.json();
         
         // Merge plugin states
-        const incomingPlugins: CloudstreamPlugin[] = data.plugins || [];
+        let incomingPlugins: CloudstreamPlugin[] = []; if (data.ok) { const providersRes = await fetch("/api/cloudstream/providers"); const pData = await providersRes.json(); incomingPlugins = pData.providers || []; }
         const existingMap = new Map(activeSettings.cloudstreamRepo.plugins.map(p => [p.internalName, p.enabled]));
 
         const mergedPlugins = incomingPlugins.map(p => ({
@@ -136,7 +136,7 @@ export default function App() {
         
         // Cloudstream Feed Promise
         fetchPromises.push(
-          fetch(`/api/cloudstream/feed?plugin=${activePlugin}&tmdbKey=${tmdbKey}`)
+          fetch(`/api/providers/${activePlugin}/home`)
             .then(res => res.json())
             .then(data => data.shows || [])
             .catch(e => { console.error('CS Fetch error', e); return []; })
@@ -446,7 +446,7 @@ export default function App() {
         onTestPluginFeed={async (plugin) => {
           setIsSyncing(true);
           try {
-            const res = await fetch(`/api/cloudstream/feed?plugin=${encodeURIComponent(plugin.internalName)}&tmdbKey=${settings.api.tmdbApiKey || ''}`);
+            const res = await fetch(`/api/providers/${encodeURIComponent(plugin.internalName)}/home`);
             const data = await res.json();
             if (data.shows?.length) {
               setPlaylist(prev => [...data.shows, ...prev]);

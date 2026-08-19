@@ -154,7 +154,12 @@ export interface CloudstreamPlugin {
   fileUrl?: string;
   tvTypes: string[];
   lang: string;
+
   status: number;
+  runtime?: string;
+  adapterAvailable?: boolean;
+  playable?: boolean;
+
   manifestVersion?: number;
   sampleEndpoint?: string;
   enabled?: boolean;
