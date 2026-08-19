@@ -19,7 +19,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeView, setActiveView] = useState<'home' | 'player'>('home');
-  const [activeId, setActiveId] = useState<string>(playlist[0]?.id || '');
+  const [activeId, setActiveId] = useState<string>((playlist[0] as ShowItem)?.id || '');
   
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isSourceDrawerOpen, setIsSourceDrawerOpen] = useState(false);
@@ -204,6 +204,9 @@ function App() {
         onViewChange={(view: 'home' | 'player') => setActiveView(view)}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
         onOpenSources={() => setIsSourceDrawerOpen(true)}
+        onOpenRepoSync={() => {}}
+        onOpenResources={() => {}}
+        onOpenBilling={() => {}}
         isSyncing={isSyncing}
         onTriggerSync={handleSyncRepository}
       />

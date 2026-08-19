@@ -1,3 +1,4 @@
+import { adapters } from './server/adapters';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -258,8 +259,6 @@ interface RegistryStatus {
     adapterCount: number;
     playableCount: number;
 }
-
-const adapters: Record<string, any> = {}; // Fake adapter registry for now
 
 let registryState: RegistryStatus = {
     status: 'idle',

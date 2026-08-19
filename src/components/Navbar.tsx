@@ -258,7 +258,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Billing Drawer */}
-          {(settings.plugins?.[0] as any)?.enabled && (
+          {(settings.cloudstreamRepo?.plugins?.[0] as any)?.enabled && (
             <button
               type="button"
               onClick={onOpenBilling}

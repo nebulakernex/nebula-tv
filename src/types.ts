@@ -141,6 +141,10 @@ export interface ThemeColors {
 
 export interface AppSettings {
   brandName: string;
+  plugins?: any[];
+  billing?: any;
+  providers?: any[];
+  cloudstreamRepo?: any;
   logoUrl: string;
   colors: ThemeColors;
   platform: {
